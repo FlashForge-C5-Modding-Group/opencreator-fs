@@ -7,3 +7,5 @@ Helper scripts for installation of OCR CFW (such as moving around gcodes and stu
 Detecting mods and dealing with them<br>
 Anything else important to the installation of CFW onto the Creator5/5Pro
 
+You probably shouldn't git clone it directly on the printer, as it will be downloaded from releases / mirrors.
+
