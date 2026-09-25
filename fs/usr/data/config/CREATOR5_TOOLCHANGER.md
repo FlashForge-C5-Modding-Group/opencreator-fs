@@ -117,6 +117,18 @@ stores raw T0 to T3 measurements; G-code offsets are relative to T0, with
 the separate `zoffset.json` per-tool adjustment added to Z. Run
 `SAVE_CONFIG` after reviewing staged values.
 
+For `TOOL=ALL`, the stock touchscreen's ordinary calibration pin is also
+used before any tool is picked up. The bare carriage's `[probe]` on
+`eboard:PG0` measures X43/Y226 and the cylinder location from `test.json`
+three times each. A spread of 0.1 mm or more, or a difference between the
+locations below 0.8 mm, aborts calibration as an untrustworthy reading or
+possible installed build plate. Its first Z reading limits the levelboard
+Z approach (never past `z_probe_target`). The levelboard still measures the
+actual fixture and each nozzle; the ordinary pin alone is not used as a
+tool offset. A single-tool run with a head already mounted cannot repeat
+the bare-carriage pin check, so use `TOOL=ALL` for the complete stock-like
+sequence.
+
 Normal attached-head recovery uses `C5_PREPARE_MACHINE` with the build plate
 installed. It homes X/Y and docks the detected head, without measuring nozzle
 offsets or probing Z. The configured `safe_z_home` clearance hop is still used
@@ -142,8 +154,9 @@ single-tool wrapper does not pick up or dock heads automatically.
 To measure all four in one run, first call `C5_CALIBRATE_OFFSETS TOOL=ALL` to
 see the removal prompt, remove the build plate, then call
 `C5_CALIBRATE_OFFSETS TOOL=ALL BUILDPLATE_REMOVED=1`. It requires
-XYZ already homed and all heads parked. It first probes Z and scans XY for
-the bare levelboard reference; then AFC selects, probes Z, scans XY, and docks
+XYZ already homed and all heads parked. It first checks the ordinary probe
+pin, then probes Z and scans XY for the bare levelboard reference; AFC then
+selects, probes Z, scans XY, and docks
 T0 through T3 in order. Each XY scan uses its own measured Z +0.6 mm. After
 all four succeed, it writes `extruder.json` atomically with a timestamped
 backup and stages the Klipper config. The stock `zoffset.json` is read as a
@@ -175,8 +188,9 @@ physical sensors through `C5_HOME_FOR_PRINT`. If a head is attached, it first
 homes XY and docks that head, then verifies all heads are parked before Z
 homing. A recovery failure blocks Z homing. Keep the build plate installed
 throughout normal print preparation. With all heads parked, it homes normally,
-selects the tool through `AFC_SELECT_TOOL`, heats it, and runs `C5_TOOL_PURGE` in the
-factory preparation area at X266.5/Y13.8. The purge command checks that a
+selects the tool through `AFC_SELECT_TOOL`, heats it, optionally runs the
+`C5_FLOW_STROKES` measurement, then runs `C5_TOOL_PURGE` in the factory
+preparation area at X266.5/Y13.8 before cooldown. The purge command checks that a
 tool is physically attached and its hotend permits extrusion, then activates
 that hotend's logical extruder before feeding. There is one shared physical
 extrusion motor; the four logical selections provide the hotend contexts.
@@ -184,12 +198,14 @@ extrusion motor; the four logical selections provide the hotend contexts.
 Failed reference or nozzle calibration restores the previous measurements
 and runtime G-code offsets. Partial Z results are not kept if XY probing fails.
 
-`printer.misc.cfg` provides touchscreen/web UI macros
-`C5_MISC_FLOW_ON`/`C5_MISC_FLOW_OFF` and
-`C5_MISC_BED_LEVEL_ON`/`C5_MISC_BED_LEVEL_OFF`. `C5_MISC` reports their
-current state. Flow testing defaults off and bed leveling defaults on at each
-Klippy restart. The slicer can
-override either switch per job using
+Mainsail's Misc controls now show **flow_calibration** as an on/off switch,
+like AFC's quiet mode. It starts on by default (`flow_calibration_default`
+in `printer.creator5.cfg`) and controls the next print; the previous
+`C5_MISC_FLOW_ON`/`C5_MISC_FLOW_OFF` commands remain available for scripts,
+but no longer clutter the macro buttons. `printer.misc.cfg` still provides
+`C5_MISC_BED_LEVEL_ON`/`C5_MISC_BED_LEVEL_OFF`, and `C5_MISC` reports both
+states. Bed leveling defaults on at each Klippy restart. The slicer can
+override either setting per job using
 `C5_PRINT_START ... FLOW_CALIBRATION=1 BED_LEVELING=1` (or `=0`). Print start
 homes XY, docks an attached head, then homes Z. It heats and picks up the
 requested head, purges at the preparation area, and optionally prints the
