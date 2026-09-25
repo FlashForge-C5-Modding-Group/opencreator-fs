@@ -6,6 +6,23 @@ The host code lives in `klipper-c5/klippy/extras/creator5_toolchanger.py`.
 add-on before using this config; stock Klipper does not provide the
 `[AFC_Toolchanger]` and `[AFC_extruder]` objects.
 
+Tool presence comes only from the eight physical `extruder_pos1..4` and
+`extruder_grab1..4` inputs on the eheaterboard. The Creator 5 toolchanger
+checks those pins for motion and status; AFC's `on_shuttle` view follows the
+same check through each tool's `creator5_tool_index`. Filament switches and
+AFC's saved selection do not determine which head is mounted. Missing or
+contradictory mount switches report no tool and block tool motion.
+In AFC status, a parked Creator 5 head reports `Parked` even if it has
+filament loaded. Only the head confirmed by the dock/grab pins can report
+`Idle` or `Printing`. PREP logs filament-switch presence separately from the
+physical `mounted`/`parked` state.
+Each standalone AFC extruder sets `auto_load_on_tool_start: False`, so a
+filament-switch transition updates AFC's presence state without automatically
+extruding. Tool selection only performs Creator 5 pickup/docking and logical
+extruder activation; explicit filament loading and print-start purge remain
+separate commands. Slicer `T0`–`T3` commands take the same swap-only path;
+they do not run AFC's standalone lane unload/load routine.
+
 The four dock positions in `printer.creator5.cfg` are the factory defaults
 decoded from `Config::initExtruderConfig()` in `firmwareExe.i64`, not
 measurements of this printer. They correspond to the firmware's
@@ -27,10 +44,23 @@ loaded separately and added to the measured relative Z offsets.
 The same binary uses an X=250 approach, X=280 pre-dock point, a final
 approach to each tool's X/Y mount, `MOTOR_GRAB`, a 20 mm X pullback, and
 `MOTOR_GRAB2`. The release path uses `MOTOR_RELEASE`. Klippy verifies the
-stock dock and grab inputs before and after motion, checks the doors, requires
+stock dock and grab inputs before and after motion, checks the doors only while
+the chamber heater has a nonzero target or output, requires
 homed axes, limits automatic coordinate corrections, and disables heaters if
 post-motion tool verification fails. The startup scan follows the binary's
 four-direction levelboard measurement around the calibration target.
+
+Toolchange speeds are configured in `printer.creator5.cfg` in mm/s:
+`clear_travel_speed`, `clearance_z_speed`, `dock_approach_speed`,
+`pickup_predock_speed`, `pickup_latch_speed`, `pullback_speed`, and
+`departure_speed`. `pickup_accel` is in mm/s². The 600 mm/s clear-travel
+setting applies only before entering the dock; close-range and departure
+moves retain independent lower limits. `release_latch_wait_ms` controls the
+post-`MOTOR_RELEASE` delay. This config sets it, `pickup_latch_wait_ms`, and
+`toolchange_sensor_settle_ms` to zero, so there are no fixed pauses during a
+normal toolchange. `M400`, synchronous motor commands, and post-move dock/grab
+switch verification remain. The slower contact speeds are separately
+configurable; zero waits do not make contact at clear-travel speed.
 
 ## First use
 
@@ -66,7 +96,7 @@ After homing XYZ, parking every head, cooling the toolheads, and raising Z
 above `safe_z`, run `EXTRUDER_POSITION_CALIBRATE T=0` (or T1–T3). The port
 releases the X/Y motors for manual alignment, waits up to 30 seconds for the
 selected holder and grab sensors, pauses five seconds for you to release your
-hand **and close the doors**, measures X/Y with `[hd_home X]` and `[hd_home Y]`,
+hand, measures X/Y with `[hd_home X]` and `[hd_home Y]`,
 rehomes XY to discard the temporary measurement frame, then re-docks at the
 measured coordinates and verifies
 the head, then updates **only** that tool's `x_check_pos*` and `y_check_pos*`
@@ -92,11 +122,17 @@ installed. It homes X/Y and docks the detected head, without measuring nozzle
 offsets or probing Z. The configured `safe_z_home` clearance hop is still used
 before XY travel, including when Z is unreferenced. This is distinct from
 explicit extruder offset calibration, which requires plate removal.
+An all-axis `G28` (including the touchscreen Home All action) uses this same
+physical-pin check. With a head mounted it homes XY, verifies and docks that
+head, then homes only Z; it does not home XY a second time. With all heads
+parked it uses Klipper's normal all-axis homing. A partial `G28 Z` is rejected
+while a head is mounted.
 
 The config-level wrapper first prompts for build-plate removal and stops
 without moving. Once the plate is removed, rerun it as
 `C5_CALIBRATE_OFFSETS TOOL=0 BUILDPLATE_REMOVED=1`. The specified tool
-must already be physically mounted; home XYZ first, with doors closed. It
+must already be physically mounted; home XYZ first. Doors may remain open if
+the chamber heater is off. It
 automatically probes Z, then scans XY at the measured Z +0.6 mm. `SAVE=1`
 stages the values in Klipper and writes `/usr/data/firmwareRes/config/extruder.json`
 after making a timestamped backup. Run `SAVE_CONFIG` to persist the Klipper
@@ -123,13 +159,23 @@ the `REMOVE_PEEL` response handler. Keep the stock `[ff_eddy levelboard]`,
 
 ## Printing and AFC
 
+Virtual-SD jobs started through Moonraker/Mainsail or `SDCARD_PRINT_FILE`
+now invoke `C5_PRINT_START` automatically before the first file command.
+The start hook reads the first 64 KiB for the first nonzero `M104`/`M109`
+hotend and `M140`/`M190` bed temperatures and the first T0–T3 selection.
+It defaults to T0 and an unheated bed when those are absent, but refuses to
+print without a hotend temperature. A file that already contains
+`C5_PRINT_START` in its header runs that command instead, without duplication.
+Use plain `.gcode`, not `.gcode.3mf`; direct streamed G-code does not use
+virtual SD and is outside this hook.
+
 The slicer can issue AFC's T0–T3 mappings, or call
 `C5_PRINT_START TOOL=0 BED=60 HOTEND=220`. `C5_PRINT_START` first checks the
 physical sensors through `C5_HOME_FOR_PRINT`. If a head is attached, it first
-homes XY and docks that head, then verifies all heads are parked before full
+homes XY and docks that head, then verifies all heads are parked before Z
 homing. A recovery failure blocks Z homing. Keep the build plate installed
-throughout normal print preparation. With all heads parked, it homes, selects
-the tool through `AFC_SELECT_TOOL`, heats it, and runs `C5_TOOL_PURGE` in the
+throughout normal print preparation. With all heads parked, it homes normally,
+selects the tool through `AFC_SELECT_TOOL`, heats it, and runs `C5_TOOL_PURGE` in the
 factory preparation area at X266.5/Y13.8. The purge command checks that a
 tool is physically attached and its hotend permits extrusion, then activates
 that hotend's logical extruder before feeding. There is one shared physical
@@ -141,18 +187,54 @@ and runtime G-code offsets. Partial Z results are not kept if XY probing fails.
 `printer.misc.cfg` provides touchscreen/web UI macros
 `C5_MISC_FLOW_ON`/`C5_MISC_FLOW_OFF` and
 `C5_MISC_BED_LEVEL_ON`/`C5_MISC_BED_LEVEL_OFF`. `C5_MISC` reports their
-current state. Defaults are off at each Klippy restart. The slicer can
+current state. Flow testing defaults off and bed leveling defaults on at each
+Klippy restart. The slicer can
 override either switch per job using
-`C5_PRINT_START ... FLOW_CALIBRATION=1 BED_LEVELING=1` (or `=0`). When bed
-leveling is on, the bed reaches its requested temperature, the machine homes,
-then a fresh `BED_MESH_CALIBRATE` runs. When off, a saved `default` mesh is
-loaded if available; otherwise no mesh is applied.
+`C5_PRINT_START ... FLOW_CALIBRATION=1 BED_LEVELING=1` (or `=0`). Print start
+homes XY, docks an attached head, then homes Z. It heats and picks up the
+requested head, purges at the preparation area, and optionally prints the
+flow-test line. It then docks the head, probes a fresh bed mesh if leveling is
+enabled (otherwise loads a saved `default` mesh if present), probes the bed
+center, picks the head back up, prints a purge line, and enters the file.
+The selected nozzle is turned off after the preparation purge and optional
+flow test, so it cools while parked; it is reheated before the final purge
+line.
+Before either low-Z purge, `C5_AUTO_NOZZLE_Z` applies the measured
+tool-to-station nozzle clearance and `C5_VERIFY_NOZZLE_Z` rejects a missing
+or reset offset. The stock firmware uses `SET_GCODE_OFFSET ... MOVE=1`; the
+Creator 5 port now does the same. The stock example `extruder.json` yields
+about 2.86 mm for T0 before print compensation, but actual printer calibration
+values are authoritative. As in factory `BuildPage::startPrint`, the offset
+also includes `(hotend - 120) * tempOffset` from `test.json`, -0.08 mm for a
+bed target of at least 100 C, -0.06 mm for a first layer below 0.11 mm, and
+the selected tool's saved touchscreen adjustment. Orca's
+`; first_layer_height = ...` header is passed through automatically when
+present; otherwise the print macro uses 0.2 mm. This is a saved-calibration
+calculation, not a fresh nozzle-to-bed contact probe.
+The center `PROBE` reading establishes/checks the bed reference. On the final
+pickup, `C5_AUTO_NOZZLE_Z` applies the factory print-start relationship:
+selected tool `tN_offset_z` minus `z_station_pos` from the measured
+`extruder.json`, plus the touchscreen-saved `z_offset_t1`–`z_offset_t4` from
+`zoffset.json`. It refuses missing calibration files, the wrong attached tool,
+or a result outside 0.5–5 mm. This is the automatic nozzle Z correction;
+the probe reading alone is not treated as nozzle contact.
+A live touchscreen `SET_GCODE_OFFSET` adjustment that is not saved to that JSON
+is not persistent across docking or restarting. After the touchscreen applies
+its live `SET_GCODE_OFFSET Z=...` value, it should send
+`C5_SAVE_TOUCHSCREEN_Z_OFFSET` while that tool is still physically attached.
+This command subtracts the currently applied automatic nozzle Z baseline
+(or the tool's levelboard-relative Z before automatic correction), writes its
+`z_offset_t1`–`z_offset_t4` adjustment to the stock JSON, and keeps a dated
+backup. It does not move the nozzle. The probe-to-nozzle reference
+must still be validated on hardware before relying on an unattended first layer.
 
 The flow switch prints an 80 mm, known-volume test line at X100–180/Y20,
 Z0.3 after the selected tool is hot. Inspect or measure that line to tune
 the slicer's flow ratio. It **does not automatically measure or correct**
 filament flow: no verified sensor/algorithm for that is present in this port.
 Run it only after verifying the bed surface, Z offset, and these XY positions.
+Because this test line runs before meshing, verify it does not overlap any
+mesh probe point; disable the flow switch if it does.
 The `chamber_led` starts at 100% white using `initial_WHITE: 1.0`.
 
 Use `C5_PRINT_STOP` at the end of a print. It stops heating, turns off the
