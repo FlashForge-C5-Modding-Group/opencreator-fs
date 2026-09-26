@@ -16,10 +16,10 @@ In AFC status, a parked Creator 5 head reports `Parked` even if it has
 filament loaded. Only the head confirmed by the dock/grab pins can report
 `Idle` or `Printing`. PREP logs filament-switch presence separately from the
 physical `mounted`/`parked` state.
-Each standalone AFC extruder sets `auto_load_on_tool_start: False`, so a
+Each standalone AFC extruder sets `auto_load_on_tool_: False`, so a
 filament-switch transition updates AFC's presence state without automatically
 extruding. Tool selection only performs Creator 5 pickup/docking and logical
-extruder activation; explicit filament loading and print-start purge remain
+extruder activation; explicit filament loading and print-purge remain
 separate commands. Slicer `T0`–`T3` commands take the same swap-only path;
 they do not run AFC's standalone lane unload/load routine.
 
@@ -188,9 +188,13 @@ physical sensors through `C5_HOME_FOR_PRINT`. If a head is attached, it first
 homes XY and docks that head, then verifies all heads are parked before Z
 homing. A recovery failure blocks Z homing. Keep the build plate installed
 throughout normal print preparation. With all heads parked, it homes normally,
-selects the tool through `AFC_SELECT_TOOL`, heats it, optionally runs the
-`C5_FLOW_STROKES` measurement, then runs `C5_TOOL_PURGE` in the factory
-preparation area at X266.5/Y13.8 before cooldown. The purge command checks that a
+selects each tool from T0 through T3 through `AFC_SELECT_TOOL`, heats it,
+optionally runs the `C5_FLOW_STROKES` bucket flow check, then runs
+`C5_TOOL_PURGE` at the configured bucket at X270/Y260 before cooldown at
+X266.5/Y13.8. All four tools must have filament and fitted nozzles. By
+default each uses `HOTEND`; pass `HOTEND0` through `HOTEND3` when their
+materials need different temperatures. Both bucket-bound moves approach
+through X250/Y250; cooldown leaves through that waypoint. The purge command checks that a
 tool is physically attached and its hotend permits extrusion, then activates
 that hotend's logical extruder before feeding. There is one shared physical
 extrusion motor; the four logical selections provide the hotend contexts.
@@ -198,23 +202,27 @@ extrusion motor; the four logical selections provide the hotend contexts.
 Failed reference or nozzle calibration restores the previous measurements
 and runtime G-code offsets. Partial Z results are not kept if XY probing fails.
 
-Mainsail's Misc controls now show **flow_calibration** as an on/off switch,
-like AFC's quiet mode. It starts on by default (`flow_calibration_default`
-in `printer.creator5.cfg`) and controls the next print; the previous
+Mainsail's Misc controls show **flow_calibration** and **purge** as on/off
+switches, like AFC's quiet mode. Both start on by default
+(`flow_calibration_default` and `purge_default` in `printer.creator5.cfg`)
+and control the next print. Turning purge off skips the T0–T3 preparation
+purges; if flow calibration is also off, the four-tool preparation loop is
+skipped entirely. Flow calibration remains independent and still extrudes its
+measurement strokes when enabled. Explicit manual `C5_TOOL_PURGE` and
+`C5_PURGE_LINE` commands are unaffected. The previous
 `C5_MISC_FLOW_ON`/`C5_MISC_FLOW_OFF` commands remain available for scripts,
 but no longer clutter the macro buttons. `printer.misc.cfg` still provides
 `C5_MISC_BED_LEVEL_ON`/`C5_MISC_BED_LEVEL_OFF`, and `C5_MISC` reports both
 states. Bed leveling defaults on at each Klippy restart. The slicer can
 override either setting per job using
-`C5_PRINT_START ... FLOW_CALIBRATION=1 BED_LEVELING=1` (or `=0`). Print start
-homes XY, docks an attached head, then homes Z. It heats and picks up the
-requested head, purges at the preparation area, and optionally prints the
-flow-test line. It then docks the head, probes a fresh bed mesh if leveling is
+`C5_PRINT_START ... FLOW_CALIBRATION=1 PURGE=1 BED_LEVELING=1` (or `=0`). Print start
+homes XY, docks an attached head, then homes Z. It picks up and primes T0,
+T1, T2, and T3 in turn, optionally checking each tool's flow over the bucket,
+and docks each after cooldown. It then probes a fresh bed mesh if leveling is
 enabled (otherwise loads a saved `default` mesh if present), probes the bed
 center, picks the head back up, prints a purge line, and enters the file.
-The selected nozzle is turned off after the preparation purge and optional
-flow test, so it cools while parked; it is reheated before the final purge
-line.
+Each nozzle is cooled before docking; the requested print nozzle is reheated
+before the final purge line.
 Before either low-Z purge, `C5_AUTO_NOZZLE_Z` applies the measured
 tool-to-station nozzle clearance and `C5_VERIFY_NOZZLE_Z` rejects a missing
 or reset offset. The stock firmware uses `SET_GCODE_OFFSET ... MOVE=1`; the
@@ -244,16 +252,43 @@ This command subtracts the currently applied automatic nozzle Z baseline
 backup. It does not move the nozzle. The probe-to-nozzle reference
 must still be validated on hardware before relying on an unattended first layer.
 
-The flow switch prints an 80 mm, known-volume test line at X100–180/Y20,
-Z0.3 after the selected tool is hot. Inspect or measure that line to tune
-the slicer's flow ratio. It **does not automatically measure or correct**
-filament flow: no verified sensor/algorithm for that is present in this port.
-Run it only after verifying the bed surface, Z offset, and these XY positions.
-Because this test line runs before meshing, verify it does not overlap any
-mesh probe point; disable the flow switch if it does.
+The flow switch runs alternating-speed XY+E strokes over the bucket, centered
+on X270/Y260 at Z8. The configured 5 mm sweep stays within X267.5–272.5.
+The touchscreen's full 1.13573/2.27146 mm extrusion pulses are retained;
+travel speed and acceleration are scaled to 4.5/22.875 mm/s and 625 mm/s²
+so the eboard sees approximately the stock motor-current pulse lengths. The
+previous version also scaled extrusion down by eight, making the classifier's
+stock waveform threshold unlikely to be met. The host waits 50 ms after
+stopping acquisition for the eboard's verdict task. It applies the mean of three
+valid eboard-selected pressure-advance candidates. If fewer than three valid
+readings arrive, it restores the prior value. This does **not** change the
+slicer's filament-flow ratio. Verify the entire X270–274/Y260 path is over the
+bucket before enabling this on the physical printer. This timing-equivalent
+bucket path still needs a hardware check; it is not the touchscreen's long
+straight-line XY path.
+
+`PAUSE` saves the current print position and raises Z by up to 5 mm without
+moving XY toward the docked heads. `RESUME` delegates to Klipper's saved-state
+restore with the return move capped at 10 mm/s; AFC's wrapper remains in place
+when PREP has installed it. At the
+cooldown wiper (X266.5/Y13.8), the nozzle descends to Z2, the eboard
+`fanM106` toolhead fan runs during cooldown, and the nozzle rises to Z10
+before docking. Verify wiper XY and Z clearances on the physical machine.
+Toolchange travel uses the configured 600 mm/s and 30000 mm/s² limits.
+Toolchanger UI status polls reuse sensor results for up to one second, but every pickup,
+dock, and interlock check still samples the physical sensors directly.
+On pickup, the first 20 mm of pullback remains at the configured 80 mm/s latch
+clearance speed; the remaining pullback and exit toward X250 use the 600 mm/s
+clear-travel speed. The tool is activated only after final sensor verification.
+After a successful selection, acceleration is set to 30000 mm/s² for the move
+toward the print; a failed pickup restores the prior acceleration.
 The `chamber_led` starts at 100% white using `initial_WHITE: 1.0`.
 
-Use `C5_PRINT_STOP` at the end of a print. It stops heating, turns off the
+Virtual SD runs `C5_PRINT_STOP` automatically at successful end-of-file when
+`auto_creator5_start` is enabled. A file that already calls it is not run
+twice. Pauses, cancellations, and command errors do not take the normal EOF
+path; a failed stop macro marks the print as errored. Direct streamed G-code
+still needs to call the macro itself. `C5_PRINT_STOP` stops heating, turns off the
 part fan, calls `AFC_UNSELECT_TOOL` to park the current head when homed, and
 disables motors. AFC's `custom_tool_swap` and `custom_unselect` entries route
 physical changes into the Klippy safety coordinator. AFC's
