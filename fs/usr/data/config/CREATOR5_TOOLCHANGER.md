@@ -213,7 +213,11 @@ measurement strokes when enabled. Explicit manual `C5_TOOL_PURGE` and
 `C5_MISC_FLOW_ON`/`C5_MISC_FLOW_OFF` commands remain available for scripts,
 but no longer clutter the macro buttons. `printer.misc.cfg` still provides
 `C5_MISC_BED_LEVEL_ON`/`C5_MISC_BED_LEVEL_OFF`, and `C5_MISC` reports both
-states. Bed leveling defaults on at each Klippy restart. The slicer can
+states. Misc also shows **lower_bed_on_end**, which defaults off. Toggle it
+with `SET_FILAMENT_SENSOR SENSOR=lower_bed_on_end ENABLE=1` (or `ENABLE=0`).
+Its startup default and travel speed are `lower_bed_on_end_default` and
+`lower_bed_speed` in `printer.creator5.cfg`. Bed leveling defaults on at each
+Klippy restart. The slicer can
 override either setting per job using
 `C5_PRINT_START ... FLOW_CALIBRATION=1 PURGE=1 BED_LEVELING=1` (or `=0`). Print start
 homes XY, docks an attached head, then homes Z. It picks up and primes T0,
@@ -289,12 +293,24 @@ Virtual SD runs `C5_PRINT_STOP` automatically at successful end-of-file when
 twice. Pauses, cancellations, and command errors do not take the normal EOF
 path; a failed stop macro marks the print as errored. Direct streamed G-code
 still needs to call the macro itself. `C5_PRINT_STOP` stops heating, turns off the
-part fan, calls `AFC_UNSELECT_TOOL` to park the current head when homed, and
-disables motors. AFC's `custom_tool_swap` and `custom_unselect` entries route
+part fan, raises Z by up to 10 mm of available travel, calls `AFC_UNSELECT_TOOL`
+to park the current head when homed, and optionally lowers the bed to the
+physical Z maximum before disabling motors. The optional move only runs when
+Z is homed and uses machine coordinates, independent of nozzle Z offsets.
+AFC's `custom_tool_swap` and `custom_unselect` entries route
 physical changes into the Klippy safety coordinator. AFC's
 `enable_standalone_purge` is disabled to avoid a second purge. The stock
 filament presence pins belong to AFC; the filament motion encoders remain
 in `printer.filament.cfg`.
+
+The Creator 5 AFC profile disables the unused TD-1 reader check,
+virtual-lane filament-weight timer, feeder quiet-mode switch, and AFC macro
+button injection. T0-T3 mapping, physical filament sensors, runout handling,
+and AFC tool selection remain enabled. These opt-outs are confined to the
+Creator 5 config; other AFC installations retain their defaults.
+The Klipper fork also omits AFC's buffer, button, hub, tip-forming, poop, and
+HTLF hardware modules. They are not loaded by this standalone profile. Restore
+the modules before configuring feeder hardware that needs them.
 
 ## Filament runout and loading
 
