@@ -222,9 +222,11 @@ but no longer clutter the macro buttons. `printer.misc.cfg` still provides
 states. Misc also shows **lower_bed_on_end**, which defaults off. Toggle it
 with `SET_FILAMENT_SENSOR SENSOR=lower_bed_on_end ENABLE=1` (or `ENABLE=0`).
 Its startup default and travel speed are `lower_bed_on_end_default` and
-`lower_bed_speed` in `printer.creator5.cfg`. Bed leveling defaults on at each
-Klippy restart. The slicer can
-override either setting per job using
+`lower_bed_speed` in `printer.creator5.cfg`. These Misc choices, bed leveling,
+and the startup and print-start tune switches are saved across Klippy restarts
+in `/usr/data/config/c5_misc_variables.cfg`. Bed leveling defaults on until
+changed. The slicer can
+override flow calibration, purge, and bed leveling per job using
 `C5_PRINT_START ... FLOW_CALIBRATION=1 PURGE=1 BED_LEVELING=1` (or `=0`). Print start
 homes XY, docks an attached head, then homes Z. It picks up and primes only
 the tool IDs in `TOOLS` (or just `TOOL` when `TOOLS` is omitted), optionally
@@ -333,10 +335,21 @@ For standalone loading, insert filament manually until AFC reports the
 toolhead sensor loaded. `C5_PREPARE_LOAD_T0` through `C5_PREPARE_LOAD_T3`
 (optional `TEMP=...`, default 220 C) select and heat the requested tool;
 `C5_PREPARE_FILAMENT_LOAD TOOL=0 TEMP=220` is the parameterized equivalent.
-Once hot, `C5_LOAD_FILAMENT LENGTH=20` feeds and purges up to 80 mm in the
-factory preparation area. Use that final feed only if AFC has not already
-completed the load; AFC standalone behavior may vary by add-on version.
-Loading is blocked while a print is running, including while it is paused, because tool selection and purging move the toolhead. Finish or cancel the print before loading filament.
+Once filament is inserted, `C5_LOAD_FILAMENT LENGTH=20` loads the currently
+attached tool. Specify a nozzle with `C5_LOAD_FILAMENT TOOL=2 TEMP=255
+LENGTH=20`, or several with `C5_LOAD_FILAMENT TOOLS=0,2 TEMP0=220 TEMP2=255
+LENGTH=20`. `TEMP` sets a common temperature (default 220 C); `TEMP0` through
+`TEMP3` override it per nozzle. Each requested tool is selected, heated,
+has its calibrated automatic nozzle Z offset applied, purged up to 80 mm
+over the rear-right bucket, cooled at the wiper, turned
+off, and docked before proceeding to the next. Insert filament into every
+requested tool before running the multi-tool command. If a requested tool is
+already mounted, it is handled first. A mounted tool not in the requested
+list must be safely cooled and docked first; the macro will not switch it
+automatically. Use the final purge only after AFC detects filament. During a
+paused print, the no-argument form feeds the attached tool in place; it does
+not travel to the bucket or dock across the part. Explicit tool selection
+requires an idle print.
 
 This implementation has been compiled and statically checked on the host.
 Physical sensor polarity, fixture height, four mount coordinates, and
