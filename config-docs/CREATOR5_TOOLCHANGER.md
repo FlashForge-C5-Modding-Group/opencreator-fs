@@ -188,12 +188,18 @@ physical sensors through `C5_HOME_FOR_PRINT`. If a head is attached, it first
 homes XY and docks that head, then verifies all heads are parked before Z
 homing. A recovery failure blocks Z homing. Keep the build plate installed
 throughout normal print preparation. With all heads parked, it homes normally,
-selects each tool from T0 through T3 through `AFC_SELECT_TOOL`, heats it,
+selects only the requested `TOOL` or listed `TOOLS` through `AFC_SELECT_TOOL`,
+heats each selected tool,
 optionally runs the `C5_FLOW_STROKES` bucket flow check, then runs
-`C5_TOOL_PURGE` at the configured bucket at X270/Y260 before cooldown at
-X266.5/Y13.8. All four tools must have filament and fitted nozzles. By
-default each uses `HOTEND`; pass `HOTEND0` through `HOTEND3` when their
-materials need different temperatures. Both bucket-bound moves approach
+`C5_TOOL_PURGE` at the configured bucket at X276.5/Y260 before cooldown at
+X266.5/Y13.8. Only prepared tools need filament and fitted nozzles. For a
+multi-tool job, pass an explicit list such as
+`C5_PRINT_START TOOL=3 TOOLS=1,3 BED=60 HOTEND=220`; the selected `TOOL`
+must be in `TOOLS`. By default each listed tool uses `HOTEND`; pass
+`HOTEND0` through `HOTEND3` when their materials need different temperatures.
+The automatic virtual-SD start prepares its detected initial tool only, so
+multi-tool slicer start G-code should specify `TOOLS` explicitly. Both
+bucket-bound moves approach
 through X250/Y250; cooldown leaves through that waypoint. The purge command checks that a
 tool is physically attached and its hotend permits extrusion, then activates
 that hotend's logical extruder before feeding. There is one shared physical
@@ -205,8 +211,8 @@ and runtime G-code offsets. Partial Z results are not kept if XY probing fails.
 Mainsail's Misc controls show **flow_calibration** and **purge** as on/off
 switches, like AFC's quiet mode. Both start on by default
 (`flow_calibration_default` and `purge_default` in `printer.creator5.cfg`)
-and control the next print. Turning purge off skips the T0–T3 preparation
-purges; if flow calibration is also off, the four-tool preparation loop is
+and control the next print. Turning purge off skips preparation
+purges; if flow calibration is also off, the used-tool preparation loop is
 skipped entirely. Flow calibration remains independent and still extrudes its
 measurement strokes when enabled. Explicit manual `C5_TOOL_PURGE` and
 `C5_PURGE_LINE` commands are unaffected. The previous
@@ -220,8 +226,9 @@ Its startup default and travel speed are `lower_bed_on_end_default` and
 Klippy restart. The slicer can
 override either setting per job using
 `C5_PRINT_START ... FLOW_CALIBRATION=1 PURGE=1 BED_LEVELING=1` (or `=0`). Print start
-homes XY, docks an attached head, then homes Z. It picks up and primes T0,
-T1, T2, and T3 in turn, optionally checking each tool's flow over the bucket,
+homes XY, docks an attached head, then homes Z. It picks up and primes only
+the tool IDs in `TOOLS` (or just `TOOL` when `TOOLS` is omitted), optionally
+checking each selected tool's flow over the bucket,
 and docks each after cooldown. It then probes a fresh bed mesh if leveling is
 enabled (otherwise loads a saved `default` mesh if present), probes the bed
 center, picks the head back up, prints a purge line, and enters the file.
@@ -257,7 +264,8 @@ backup. It does not move the nozzle. The probe-to-nozzle reference
 must still be validated on hardware before relying on an unattended first layer.
 
 The flow switch runs alternating-speed XY+E strokes over the bucket, centered
-on X270/Y260 at Z8. The configured 5 mm sweep stays within X267.5–272.5.
+on X276.5/Y260 at Z8. The configured 5 mm sweep stays within X274–279,
+inside the usable X280 boundary and farther from the chute's inboard wiper.
 The touchscreen's full 1.13573/2.27146 mm extrusion pulses are retained;
 travel speed and acceleration are scaled to 4.5/22.875 mm/s and 625 mm/s²
 so the eboard sees approximately the stock motor-current pulse lengths. The
@@ -266,7 +274,7 @@ stock waveform threshold unlikely to be met. The host waits 50 ms after
 stopping acquisition for the eboard's verdict task. It applies the mean of three
 valid eboard-selected pressure-advance candidates. If fewer than three valid
 readings arrive, it restores the prior value. This does **not** change the
-slicer's filament-flow ratio. Verify the entire X270–274/Y260 path is over the
+slicer's filament-flow ratio. Verify the entire X274–279/Y260 path is over the
 bucket before enabling this on the physical printer. This timing-equivalent
 bucket path still needs a hardware check; it is not the touchscreen's long
 straight-line XY path.
