@@ -7,6 +7,7 @@ import jinja2
 
 CONFIG = (pathlib.Path(__file__).resolve().parents[1] / "fs" / "usr" /
           "data" / "config" / "printer.creator5.cfg")
+FILAMENT_CONFIG = CONFIG.with_name("printer.filament.cfg")
 
 
 def print_start_template():
@@ -43,6 +44,17 @@ def render_start(tool, tools, present, absent_sensors=()):
 
 
 class PrintStartFilamentTests(unittest.TestCase):
+    def test_wheel_failure_routes_to_clog_handler_without_preemptive_pause(self):
+        text = FILAMENT_CONFIG.read_text(encoding="utf-8")
+        self.assertIn("clog_detection_default: False",
+                      CONFIG.read_text(encoding="utf-8"))
+        for tool in range(4):
+            section = text.split(
+                "[filament_motion_sensor fm_ex%d]\n" % tool, 1)[1]
+            section = section.split("\n[", 1)[0]
+            self.assertIn("pause_on_runout: False", section)
+            self.assertIn("C5_WHEEL_CLOG TOOL=%d" % tool, section)
+
     def test_missing_selected_tool_cancels_before_motion_and_heat(self):
         output, messages = render_start(3, "3", set())
         self.assertIn("CANCEL_PRINT", output)
