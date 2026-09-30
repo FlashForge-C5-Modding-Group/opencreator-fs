@@ -1,0 +1,57 @@
+#!/bin/sh
+# C5 firmwareExe replacement, meant to bootstrap the initial system and startup the main applications loop
+# Basically meant to do Wi-Fi and SoC coprocessor, then handoff to startup.sh @ /usr/data/opencreator/startup/startup.sh
+# This also makes it recoverable if startup's script breaks, as you'll still have Wi-Fi / SSH if you're not on a new
+# install. This is meant to run over a current install of 1.9.9 with Wi-Fi already made, so then well, you aren't
+# stuck if everything breaks.
+# Based on Tunneled Launcher for Tunneled OpenCreator
+
+# OpenCreator 2026 - Distributed under MIT - No warranty and support is optional
+
+LAUNCHER_LOG="/tmp/opencreator.log"
+log_launcher() {
+    echo "$1" >> "$LAUNCHER_LOG"
+}
+log_launcher "firmwareExe is starting..."
+
+log_launcher "FE: Launching Co-Processor..."
+# Mirrors stock klipper/start.sh (SoC coprocessor firmware).
+cmd_mcu write_firmware /usr/prog/libmcu-bare.bin
+cmd_mcu bootup
+sleep 2
+
+log_launcher "FE: Joining Wi-Fi Network..."
+# Stock firmwareExe joins the Wi-Fi networks saved from the touchscreen;
+# without it nothing associates wlan0 (dhcpcd from init only leases). The
+# Wi-Fi adapter is on the printer's USB bus: a USB reset re-creates wlan0
+# and strands wpa_supplicant/udhcpc, so check every 10 s and restart them
+# when wlan0 is new or they are gone.
+WPA_CONF=/usr/prog/wifi/wpa_supplicant.conf
+wifi_check() {
+    [ -e /sys/class/net/wlan0 ] || return
+    grep -q 'network=' "$WPA_CONF" 2>/dev/null || return
+    index=$(cat /sys/class/net/wlan0/ifindex 2>/dev/null)
+    if [ "$index" != "$wifi_index" ]; then
+        killall wpa_supplicant udhcpc >/dev/null 2>&1
+        sleep 1
+        wifi_index=$index
+    fi
+    pidof wpa_supplicant >/dev/null 2>&1 || \
+        wpa_supplicant -Dnl80211 -iwlan0 -c"$WPA_CONF" -B
+    pidof udhcpc >/dev/null 2>&1 || udhcpc -i wlan0 -b >/dev/null 2>&1
+}
+wifi_index=$(cat /sys/class/net/wlan0/ifindex 2>/dev/null)
+pidof wpa_supplicant >/dev/null 2>&1 || wifi_index=
+(
+    while true; do
+        wifi_check
+        sleep 10
+    done
+) &
+
+log_launcher "FE: Launching Startup Loop..."
+
+while true; do
+    /usr/data/opencreator/startup/startup.sh
+    sleep 3
+done

@@ -4,7 +4,7 @@
 set -e
 set -u
 
-TARGET_DIR="/usr/data/opencreator/scripts"
+TARGET_DIR="/usr/data/opencreator/startup/scripts/"
 LAUNCHER_LOG="/tmp/opencreator.log"
 
 log_launcher() {
