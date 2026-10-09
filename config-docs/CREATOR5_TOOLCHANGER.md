@@ -208,8 +208,11 @@ extrusion motor; the four logical selections provide the hotend contexts.
 Failed reference or nozzle calibration restores the previous measurements
 and runtime G-code offsets. Partial Z results are not kept if XY probing fails.
 
-Mainsail's Misc controls show **flow_calibration** and **purge** as on/off
-switches, like AFC's quiet mode. Both start on by default
+Fluidd's Fans & Outputs panel shows the virtual output pins **flow_calibration**,
+**purge**, **bed_leveling**, **bed_soak**, **clog_detection**,
+**lower_bed_on_end**, **quiet_mode**, **startup_tune**, and
+**print_start_tune** controls as on/off switches. They do not drive physical
+MCU pins. Flow and purge start on by default
 (`flow_calibration_default` and `purge_default` in `printer.creator5.cfg`)
 and control the next print. Turning purge off skips preparation
 purges; if flow calibration is also off, the used-tool preparation loop is
@@ -219,8 +222,8 @@ measurement strokes when enabled. Explicit manual `C5_TOOL_PURGE` and
 `C5_MISC_FLOW_ON`/`C5_MISC_FLOW_OFF` commands remain available for scripts,
 but no longer clutter the macro buttons. `printer.misc.cfg` still provides
 `C5_MISC_BED_LEVEL_ON`/`C5_MISC_BED_LEVEL_OFF`, and `C5_MISC` reports both
-states. Misc also shows **lower_bed_on_end**, which defaults off. Toggle it
-with `SET_FILAMENT_SENSOR SENSOR=lower_bed_on_end ENABLE=1` (or `ENABLE=0`).
+states. Fans & Outputs also shows **lower_bed_on_end**, which defaults off. Toggle it
+with `SET_PIN PIN=lower_bed_on_end VALUE=1` (or `VALUE=0`).
 Its startup default and travel speed are `lower_bed_on_end_default` and
 `lower_bed_speed` in `printer.creator5.cfg`. These Misc choices, bed leveling,
 and the startup and print-start tune switches are saved across Klippy restarts

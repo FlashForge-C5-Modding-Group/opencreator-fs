@@ -21,9 +21,9 @@ def print_start_template():
 
 def render_start(tool, tools, present, absent_sensors=()):
     printer = {
-        "save_variables": {"variables": {"c5_bed_leveling": 1}},
-        "filament_switch_sensor flow_calibration": {"enabled": False},
-        "filament_switch_sensor purge": {"enabled": False},
+        "output_pin flow_calibration": {"value": 0.},
+        "output_pin purge": {"value": 0.},
+        "output_pin bed_leveling": {"value": 1.},
     }
     for index in range(4):
         extruder = "extruder" if index == 0 else "extruder%d" % index
