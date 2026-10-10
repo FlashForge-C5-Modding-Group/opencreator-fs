@@ -94,12 +94,26 @@ for template in "$TEMPLATE_DIR"/*.cfg; do
         continue
     fi
 
-    diff -u "$base" "$template" >"$WORK/$name.patch" 2>/dev/null
+    # Normalize CRLF before diffing/patching: a live file that picked up
+    # CRLF endings at some point (this repo is maintained on Windows, so
+    # it's not guaranteed every path that lands a config on the printer
+    # keeps it LF-only) would otherwise fail every context-line match
+    # against an LF-only base/template, since patch compares lines as
+    # exact strings including the trailing \r. That just means a wasted
+    # conflict report here (patch's own all-or-nothing hunk application
+    # means a mismatch never reaches `mv`, so the live file was never at
+    # risk of corruption the way the Pi-side git-merge-file tool was),
+    # but it is still worth avoiding -- normalize all three to LF for
+    # the comparison, and write the merged result back as LF too.
+    tr -d '\r' <"$base" >"$WORK/$name.base"
+    tr -d '\r' <"$template" >"$WORK/$name.template"
+    tr -d '\r' <"$live" >"$WORK/$name.live"
+    diff -u "$WORK/$name.base" "$WORK/$name.template" >"$WORK/$name.patch" 2>/dev/null
     # Default fuzz (not 0): tested empirically -- a strict exact-context
     # match breaks the common case where the template's hunk context
     # happens to border a line the user independently customized nearby
     # (not the changed line itself), which is routine in these configs.
-    if patch --no-backup-if-mismatch -o "$WORK/$name.merged" "$live" \
+    if patch --no-backup-if-mismatch -o "$WORK/$name.merged" "$WORK/$name.live" \
         <"$WORK/$name.patch" >"$WORK/$name.patchlog" 2>&1; then
         mv "$WORK/$name.merged" "$live"
         cp "$template" "$base"
