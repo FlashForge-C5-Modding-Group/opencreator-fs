@@ -67,8 +67,8 @@ class PrintStartFilamentTests(unittest.TestCase):
         self.assertIn("C5_HOME_FOR_PRINT", output)
         self.assertNotIn("CANCEL_PRINT", output)
         self.assertEqual(messages, [])
-        self.assertLess(output.index("RESET_AFC_MAPPING RUNOUT=no"),
-                        output.index("AFC_SELECT_TOOL TOOL=extruder3"))
+        # The mapping reset lives in C5_PRINT_STOP so a SET_MAP survives.
+        self.assertNotIn("RESET_AFC_MAPPING", output)
 
     def test_cancel_does_not_change_afc_mapping(self):
         output, _ = render_start(3, "3", set())
