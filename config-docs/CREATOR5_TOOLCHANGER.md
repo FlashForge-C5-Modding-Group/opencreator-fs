@@ -140,6 +140,13 @@ head, then homes only Z; it does not home XY a second time. With all heads
 parked it uses Klipper's normal all-axis homing. A partial `G28 Z` is rejected
 while a head is mounted.
 
+Run `C5_CALIBRATE_OFFSETS` with no arguments to be walked through it in a
+Fluidd/Mainsail prompt: all tools or one tool, then build-plate removal, then
+(single tool only) whether to also refresh the levelboard probe reference.
+All-tool calibration offers to home first, with the plate still installed,
+if the printer is not homed. The final answer runs the command below with
+the matching arguments.
+
 The config-level wrapper first prompts for build-plate removal and stops
 without moving. Once the plate is removed, rerun it as
 `C5_CALIBRATE_OFFSETS TOOL=0 BUILDPLATE_REMOVED=1`. The specified tool
@@ -187,7 +194,12 @@ The slicer can issue AFC's T0–T3 mappings, or call
 physical sensors through `C5_HOME_FOR_PRINT`. If a head is attached, it first
 homes XY and docks that head, then verifies all heads are parked before Z
 homing. A recovery failure blocks Z homing. Keep the build plate installed
-throughout normal print preparation. With all heads parked, it homes normally,
+throughout normal print preparation. After homing, `C5_CHECK_BUILD_PLATE`
+confirms the plate is installed using the same stock-pin comparison offset
+calibration uses to confirm it is removed: the pin heights at
+`plate_check_x`/`plate_check_y` and the factory cylinder must differ by less
+than `plate_check_min_delta`. A missing plate stops the print before anything
+heats. Pass `BUILDPLATE_CHECK=0` to skip it for one job. With all heads parked, it homes normally,
 selects only the requested `TOOL` or listed `TOOLS` through `AFC_SELECT_TOOL`,
 heats each selected tool,
 optionally runs the `C5_FLOW_STROKES` bucket flow check, then runs

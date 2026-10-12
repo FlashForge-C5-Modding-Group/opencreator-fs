@@ -146,6 +146,18 @@ class CalibrateTests(unittest.TestCase):
         self.assertIn("MPC_CALIBRATE HEATER=extruder1 TARGET=230.0 "
                       "FAN_BREAKPOINTS=10", out)
 
+    def test_calibrates_over_purge_bucket(self):
+        for path, name in ((MPC_CONFIG, "gcode_macro C5_MPC_CALIBRATE"),
+                           (CONFIG_DIR / "printer.macro.cfg",
+                            "gcode_macro C5_PID_CALIBRATE")):
+            out = render(path, name, printer_state(), {})
+            calibrate = [i for i, line in enumerate(out)
+                         if line.startswith(("MPC_CALIBRATE", "PID_CALIBRATE"))]
+            self.assertEqual(len(calibrate), 4)
+            for i in calibrate:
+                self.assertEqual(out[i - 1], "C5_MOVE_TO_PURGE_BUCKET")
+                self.assertEqual(out[i + 2], "G1 X250.0 Y250.0 F6000")
+
 
 class PrintStartMaterialTests(unittest.TestCase):
 
@@ -173,6 +185,35 @@ class PrintStartMaterialTests(unittest.TestCase):
 
     def test_no_material_no_call(self):
         self.assertEqual(self.start({"TOOL": "0", "HOTEND": "220"}), [])
+
+
+class PrintStartPlateCheckTests(unittest.TestCase):
+
+    def start(self, params):
+        printer = {
+            "output_pin flow_calibration": {"value": 0.},
+            "output_pin purge": {"value": 0.},
+            "output_pin bed_leveling": {"value": 0.},
+            "bed_mesh": {"profiles": {}},
+            "filament_switch_sensor extruder_tool_start": {
+                "filament_detected": True},
+        }
+        return render(START_CONFIG, "gcode_macro C5_PRINT_START", printer,
+                      dict({"TOOL": "0", "HOTEND": "220"}, **params))
+
+    def test_checks_plate_right_after_homing(self):
+        out = self.start({})
+        home = out.index("C5_HOME_FOR_PRINT")
+        self.assertEqual(out[home + 1], "C5_CHECK_BUILD_PLATE")
+        self.assertLess(home + 1, out.index("M140 S0.0"))
+
+    def test_can_be_skipped(self):
+        self.assertNotIn("C5_CHECK_BUILD_PLATE",
+                         self.start({"BUILDPLATE_CHECK": "0"}))
+
+    def test_rejects_bad_value(self):
+        with self.assertRaisesRegex(RaisedError, "BUILDPLATE_CHECK"):
+            self.start({"BUILDPLATE_CHECK": "2"})
 
 
 if __name__ == "__main__":

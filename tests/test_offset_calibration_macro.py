@@ -45,5 +45,12 @@ class OffsetCalibrationMacroTests(unittest.TestCase):
             render_calibration({'TOOL': '2', 'LEVELBOARD': '0'})
 
 
+class OffsetWizardTests(unittest.TestCase):
+    def test_no_arguments_opens_firmware_prompt(self):
+        lines = [l.strip() for l in render_calibration({}).splitlines()
+                 if l.strip() and not l.strip().startswith('#')]
+        self.assertEqual(lines, ['C5_OFFSET_WIZARD'])
+
+
 if __name__ == '__main__':
     unittest.main()
