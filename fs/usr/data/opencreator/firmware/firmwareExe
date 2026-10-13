@@ -14,6 +14,12 @@ log_launcher() {
 }
 log_launcher "firmwareExe is starting..."
 
+log_launcher "FE: Starting SoC coprocessor..."
+# Mirrors stock klipper/start.sh.
+cmd_mcu write_firmware /usr/prog/libmcu-bare.bin
+cmd_mcu bootup
+sleep 2
+
 log_launcher "FE: Joining Wi-Fi Network..."
 # Stock firmwareExe joins the Wi-Fi networks saved from the touchscreen;
 # without it nothing associates wlan0 (dhcpcd from init only leases). The
@@ -54,9 +60,12 @@ if [ -x "$TUNNELED_SCRIPT" ]; then
     exec "$TUNNELED_SCRIPT" >> "$LAUNCHER_LOG" 2>&1
 fi
 
-log_launcher "FE: Launching Startup Loop..."
+log_launcher "FE: Launching Startup Scripts..."
+/usr/data/opencreator/startup/startup.sh
 
+# startup.sh backgrounds every script and returns at once, so it must only
+# run once. app_startup.sh restores the stock binary unless a process named
+# firmwareExe is still running, so stay alive.
 while true; do
-    /usr/data/opencreator/startup/startup.sh
-    sleep 3
+    sleep 3600
 done

@@ -145,7 +145,10 @@ Fluidd/Mainsail prompt: all tools or one tool, then build-plate removal, then
 (single tool only) whether to also refresh the levelboard probe reference.
 All-tool calibration offers to home first, with the plate still installed,
 if the printer is not homed. The final answer runs the command below with
-the matching arguments.
+the matching arguments. The prompt is built into the toolchanger module of
+both klipper-c5 and Kalico as `C5_OFFSET_WIZARD`; the firmware's own
+`C5_TOOL_OFFSET_CALIBRATE` and `C5_CALIBRATE_ALL_OFFSETS` open it too when
+run without arguments (the latter starting at the plate step).
 
 The config-level wrapper first prompts for build-plate removal and stops
 without moving. Once the plate is removed, rerun it as
@@ -177,6 +180,50 @@ present in `klipper-c5`. This port fixes their incompatible probe call and
 the `REMOVE_PEEL` response handler. Keep the stock `[ff_eddy levelboard]`,
 `[e_stop X]`, `[e_stop Y]`, and `[e_stop Z]` sections in the printer config.
 
+## Extruder Rotation Calibration
+
+`C5_EXTRUDER_ROTATION_CALIBRATION` (or `C5_EXTRUDER_ROTATION_CALIBRATE`)
+sets a tool's `rotation_distance` from its `fm_exN` filament wheel. It homes
+if needed, picks up the tool with AFC, moves to the purge bucket, heats,
+primes 5 mm, then extrudes a known length. During that extrusion it counts
+the wheel's pulses. The measured length is the pulse count times
+`wheel_mm_per_pulse`, and the new rotation distance is the current one
+scaled by measured ÷ requested. The new value is applied immediately and
+staged for `SAVE_CONFIG`. Without `TOOL`, it asks which tool to calibrate.
+
+| Parameter | Default | |
+|---|---|---|
+| `TOOL` | prompt | 0–3 |
+| `LENGTH` | 100 | mm extruded while counting |
+| `SPEED` | 3 | mm/s |
+| `TEMP` | 245 | nozzle temperature |
+| `MANUAL` | 0 | 1 forces the manual wheel step |
+| `MARK` | `LENGTH` + 20 | mark distance for the manual step |
+
+The defaults come from `rotation_calibration_length`,
+`rotation_calibration_speed` and `rotation_calibration_temp` in
+`[creator5_toolchanger]`. `rotation_calibration_timeout` (30 s) limits the
+manual measuring step below.
+
+**Wheel scale (first run).** The wheel's mm per pulse is not known from
+stock. While `wheel_mm_per_pulse` is unset, or with `MANUAL=1`, the
+calibration stops after priming and asks you to mark the filament `MARK` mm
+above where it enters the tool. Press **Extrude**, then measure from the
+inlet to the mark and run
+`C5_EXTRUDER_ROTATION_CALIBRATE TOOL=n REMAINING=<mm>`. The real length
+moved (`MARK` − `REMAINING`) gives `wheel_mm_per_pulse` and a rotation
+distance, which is applied to all four tools since they share one motor.
+Both are staged for `SAVE_CONFIG`. After that, run the calibration on any
+single tool to fine-tune it from its wheel, with no marking. If `REMAINING` is
+not sent within 30 seconds of the extrusion finishing, the calibration
+errors out and turns that tool's heater off. Later runs on any tool are
+automatic. This assumes all four wheels are the same size.
+
+The run stops with an error if the wheel sees fewer than 10 pulses, or if
+the measured length is outside 70–130 % of the requested length (slipping,
+a wrong mark, or a wrong `wheel_mm_per_pulse`). Each logical extruder keeps
+its own `rotation_distance`, so tools can differ.
+
 ## Printing and AFC
 
 Virtual-SD jobs started through Moonraker/Mainsail or `SDCARD_PRINT_FILE`
@@ -198,7 +245,8 @@ throughout normal print preparation. After homing, `C5_CHECK_BUILD_PLATE`
 confirms the plate is installed using the same stock-pin comparison offset
 calibration uses to confirm it is removed: the pin heights at
 `plate_check_x`/`plate_check_y` and the factory cylinder must differ by less
-than `plate_check_min_delta`. A missing plate stops the print before anything
+than `plate_check_min_delta`. It travels between the probe points at
+`plate_check_travel_speed` (default 100 mm/s). A missing plate stops the print before anything
 heats. Pass `BUILDPLATE_CHECK=0` to skip it for one job. With all heads parked, it homes normally,
 selects only the requested `TOOL` or listed `TOOLS` through `AFC_SELECT_TOOL`,
 heats each selected tool,
@@ -345,6 +393,25 @@ the sensor remains clear for ten seconds, AFC pauses the print. The four
 filament motion encoders remain diagnostic only; they do not issue a second
 pause. AFC's toolhead-sensor runout behavior and debounce setting are
 documented in the [AFC hardware config](https://www.afcproject.dev/configuration/AFC_Hardware.cfg.html).
+
+After that pause, `C5_FILAMENT_RUNOUT` (`printer.filament.cfg`) retracts the
+remaining filament (`retract_length`, default 100 mm at 10 mm/s) and opens a
+Fluidd/Mainsail prompt: "Filament has run out of Tn, would you like to switch
+over or start loading new filament".
+
+- **Switch to Tm** appears for every other tool whose sensor detects filament.
+  `C5_RUNOUT_SWITCH` heats Tm to Tn's print temperature, swaps heads, maps Tn's
+  slicer tool to Tm, returns to the paused position with Tm's offsets, resumes,
+  and turns Tn's heater off.
+- **Load new filament** reheats Tn and moves it to the purge bucket. Insert
+  filament until it stops and press **Load**: Tn purges `load_length` (default
+  80 mm), and the print resumes where it paused.
+- Closing the prompt leaves the print paused. `RESUME` or `CANCEL_PRINT` work
+  as usual.
+
+The lengths are variables on `[gcode_macro C5_FILAMENT_RUNOUT]`. If AFC has an
+infinite-spool runout lane set for the tool, AFC switches automatically and no
+prompt appears.
 
 For standalone loading, insert filament manually until AFC reports the
 toolhead sensor loaded. `C5_PREPARE_LOAD_T0` through `C5_PREPARE_LOAD_T3`
