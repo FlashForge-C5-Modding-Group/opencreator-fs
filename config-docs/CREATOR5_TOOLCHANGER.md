@@ -62,6 +62,59 @@ normal toolchange. `M400`, synchronous motor commands, and post-move dock/grab
 switch verification remain. The slower contact speeds are separately
 configurable; zero waits do not make contact at clear-travel speed.
 
+## First-time setup dialog
+
+After installing, Fluidd, Mainsail and the touchscreen show a short setup
+dialog. It is a series of `action:prompt` pages from `printer.misc.cfg`, so
+any client that shows Klipper prompts can answer it.
+
+| Page | Text | Buttons | Effect |
+| --- | --- | --- | --- |
+| OpenCreator | Welcome to OpenCreator! We'll setup your Printer as you'd love! | Let's get started! | Next page |
+| Clog Detection | Do you want Clog Detection enabled? | No / Yes | Sets the `clog_detection` switch |
+| Bed Heat Soak | Do you want bed heat soaking enabled? | No / Yes | Sets the `bed_soak` switch |
+| You're all set! | The Discord link, https://discord.gg/RsdkqDtfww | Finish | Closes the dialog |
+
+**Clog Detection.** With it on, a tool's filament wheel (`fm_exN`) stopping
+while that tool is printing and its filament switch still sees filament
+pauses the print with `E0163 ... clog detected`. With it off, the wheel is
+ignored; running out of filament is still handled by the filament switch and
+AFC either way.
+
+**Bed heat soak.** With it on, print start waits at bed temperature for
+`bed_soak_minutes` (in `printer.creator5.cfg`) right before a fresh bed mesh,
+so the mesh is taken after the plate has finished warping. It only runs when
+the print makes a new mesh and the bed is heated.
+
+Both answers are the same switches shown under Fans & Outputs and set by
+`C5_MISC_BED_SOAK_ON`/`OFF` or `SET_PIN PIN=clog_detection VALUE=1`, so they
+can be changed at any time later. Like the other Misc switches, they are saved
+in `c5_misc_variables.cfg` and survive restarts.
+
+### When it shows
+
+Klipper cannot tell when a browser opens, so the dialog is driven from
+Klipper's side instead:
+
+- `C5_FIRST_SETUP_CHECK` runs 10 seconds after Klipper starts and shows the
+  dialog, then shows it again every 60 seconds. A browser opened later sees
+  it within a minute.
+- It returns on the page last reached, so closing it part way and coming back
+  does not start over. A Klipper restart does start over, at the welcome page.
+- It is not shown while a print is printing or paused; the 60 second check
+  keeps waiting until the printer is idle.
+- Reaching the last page saves `c5_first_setup_done: 1` in
+  `c5_misc_variables.cfg` and stops the check. From then on it never shows on
+  its own, including after updates that keep that file.
+
+### Running it again
+
+- `C5_FIRST_SETUP` opens the dialog at the welcome page. It only shows the
+  dialog; answering it changes the two switches again.
+- To have it show on its own again, as on a fresh install, remove the
+  `c5_first_setup_done` line from `c5_misc_variables.cfg` (or run
+  `SAVE_VARIABLE VARIABLE=c5_first_setup_done VALUE=0`) and restart Klipper.
+
 ## First use
 
 1. Confirm each `QUERY_BUTTON BUTTON=extruder_pos1` through `pos4` and
@@ -185,11 +238,15 @@ the `REMOVE_PEEL` response handler. Keep the stock `[ff_eddy levelboard]`,
 `C5_EXTRUDER_ROTATION_CALIBRATION` (or `C5_EXTRUDER_ROTATION_CALIBRATE`)
 sets a tool's `rotation_distance` from its `fm_exN` filament wheel. It homes
 if needed, picks up the tool with AFC, moves to the purge bucket, heats,
-primes 5 mm, then extrudes a known length. During that extrusion it counts
+applies nozzle Z (`C5_AUTO_NOZZLE_Z`), primes 5 mm, then extrudes a known length. During that extrusion it counts
 the wheel's pulses. The measured length is the pulse count times
 `wheel_mm_per_pulse`, and the new rotation distance is the current one
 scaled by measured ÷ requested. The new value is applied immediately and
-staged for `SAVE_CONFIG`. Without `TOOL`, it asks which tool to calibrate.
+staged for `SAVE_CONFIG`. When it finishes or is cancelled, it cools the nozzle at the wiper
+(`C5_COOL_FOR_DOCK`), turns the heater off and docks the tool with
+`AFC_UNSELECT_TOOL`. If it fails or times out, it only turns the heater off
+and leaves the tool mounted. Without `TOOL`, it asks which tool
+to calibrate.
 
 | Parameter | Default | |
 |---|---|---|
@@ -366,7 +423,7 @@ Virtual SD runs `C5_PRINT_STOP` automatically at successful end-of-file when
 twice. Pauses, cancellations, and command errors do not take the normal EOF
 path; a failed stop macro marks the print as errored. Direct streamed G-code
 still needs to call the macro itself. `C5_PRINT_STOP` stops heating, turns off the
-part fan, raises Z by up to 10 mm of available travel, calls `AFC_UNSELECT_TOOL`
+part fan and chamber fans (`M107`, `M107 P2`, `M107 P3`), raises Z by up to 10 mm of available travel, calls `AFC_UNSELECT_TOOL`
 to park the current head when homed, and optionally lowers the bed to the
 physical Z maximum before disabling motors. The optional move only runs when
 Z is homed and uses machine coordinates, independent of nozzle Z offsets.
