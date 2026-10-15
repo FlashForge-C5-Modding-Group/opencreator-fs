@@ -14,6 +14,12 @@ log_launcher() {
 }
 log_launcher "firmwareExe is starting..."
 
+log_launcher "FE: Enabling legacy NaN and mounting Entware..."
+sh /usr/data/opencreator/startup/scripts/01-fixnan.sh
+if [ ! -x /opt/bin/opkg ] && [ -d /usr/data/bin/opt ] && ! grep -q ' /opt ' /proc/mounts; then
+    mount --bind /usr/data/bin/opt /opt
+fi
+
 log_launcher "FE: Starting SoC coprocessor..."
 # Mirrors stock klipper/start.sh.
 cmd_mcu write_firmware /usr/prog/libmcu-bare.bin

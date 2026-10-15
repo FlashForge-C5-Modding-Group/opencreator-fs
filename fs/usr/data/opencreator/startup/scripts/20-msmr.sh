@@ -4,6 +4,11 @@ OC=/usr/data/opencreator/klipper
 MOONRAKER=/usr/prog/moonraker/moonraker
 MPY=/usr/prog/moonraker/moonraker-env/bin/python
 export PATH=$PATH:/opt/bin
+# HOME is the read-only / at boot; Moonraker's update manager runs pip.
+if [ -z "${HOME:-}" ] || [ "$HOME" = / ]; then
+    export HOME=/usr/data/opencreator/home
+    mkdir -p "$HOME"
+fi
 
 log_launcher() {
     echo "$1" >> "$LAUNCHER_LOG"
