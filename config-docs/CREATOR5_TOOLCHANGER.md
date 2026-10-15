@@ -344,7 +344,7 @@ with `SET_PIN PIN=lower_bed_on_end VALUE=1` (or `VALUE=0`).
 Its startup default and travel speed are `lower_bed_on_end_default` and
 `lower_bed_speed` in `printer.creator5.cfg`. These Misc choices, bed leveling,
 and the startup and print-start tune switches are saved across Klippy restarts
-in `/usr/data/config/c5_misc_variables.cfg`. Bed leveling defaults on until
+in `/usr/data/opencreator/klipper/config/c5_misc_variables.cfg`. Bed leveling defaults on until
 changed. The slicer can
 override flow calibration, purge, and bed leveling per job using
 `C5_PRINT_START ... FLOW_CALIBRATION=1 PURGE=1 BED_LEVELING=1` (or `=0`). Print start
