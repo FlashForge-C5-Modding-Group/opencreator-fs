@@ -4,7 +4,7 @@
 # opencreator-tunnel; see config-docs/CREATOR5_MCU_WAKE.md.
 
 LOG=/usr/data/logs/c5-mcu-wake.log
-PRINTER_LOG=/usr/data/logs/printer.log
+PRINTER_LOG=/usr/data/opencreator/klipper/logs/printer.log
 LOCK=/tmp/c5-mcu-wake.lock
 RETRY_MIN=7
 

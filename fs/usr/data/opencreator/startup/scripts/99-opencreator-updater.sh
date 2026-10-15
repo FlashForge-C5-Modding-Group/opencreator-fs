@@ -2,9 +2,9 @@
 # OpenCreator Updater (SoC/LoopScript v2 edition).
 #
 # On every boot: merges the latest fs/usr/data/config/*.cfg template from
-# opencreator-fs into the live /usr/data/config, preserving values the
+# opencreator-fs into the live /usr/data/opencreator/klipper/config, preserving values the
 # user has customized (speeds, spoolman, toggle defaults, etc), then
-# refreshes the Klipper source baked into /usr/prog/klipper. Dispatched
+# refreshes a non-git Klipper in /usr/data/opencreator/klipper/klipper. Dispatched
 # once per boot by startup.sh like every other script in this directory
 # -- there is no systemd here to trigger it from Moonraker's update
 # manager the way the Pi-tunnel version works (see
@@ -31,13 +31,13 @@
 set -u
 
 LOG=/tmp/opencreator-updater.log
-CONFIG_DIR=/usr/data/config
+CONFIG_DIR=/usr/data/opencreator/klipper/config
 BASE_DIR="$CONFIG_DIR/.opencreator-updater/base"
 WORK=/tmp/opencreator-updater.work
-KLIPPER_DIR=/usr/prog/klipper
+KLIPPER_DIR=/usr/data/opencreator/klipper/klipper
 KLIPPER_HASH_MARKER=/usr/data/opencreator/.opencreator-updater-klipper-tar-sha256
 FS_URL=https://github.com/FlashForge-C5-Modding-Group/opencreator-fs/archive/refs/heads/main.tar.gz
-KLIPPER_URL=https://github.com/FlashForge-C5-Modding-Group/klipper-c5/archive/refs/heads/master.tar.gz
+KLIPPER_URL=https://github.com/FlashForge-C5-Modding-Group/kalico/archive/refs/heads/something.tar.gz
 MOONRAKER_API=http://127.0.0.1:7125
 
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >>"$LOG"; }
@@ -129,12 +129,14 @@ for template in "$TEMPLATE_DIR"/*.cfg; do
 done
 
 log "refreshing klipper source"
-if curl -fsSL --max-time 120 -o "$WORK/klipper.tar.gz" "$KLIPPER_URL"; then
+if [ -d "$KLIPPER_DIR/.git" ]; then
+    log "klipper: git checkout, updated through Moonraker's update manager"
+elif curl -fsSL --max-time 120 -o "$WORK/klipper.tar.gz" "$KLIPPER_URL"; then
     new_hash=$(sha256sum "$WORK/klipper.tar.gz" | cut -d' ' -f1)
     old_hash=$(cat "$KLIPPER_HASH_MARKER" 2>/dev/null || echo "")
     if [ "$new_hash" != "$old_hash" ]; then
         tar -xzf "$WORK/klipper.tar.gz" -C "$WORK"
-        KSRC=$(find "$WORK" -maxdepth 1 -type d -name 'klipper-c5-*')
+        KSRC=$(find "$WORK" -maxdepth 1 -type d -name 'kalico-*')
         if [ -n "$KSRC" ] && [ -d "$KSRC/klippy" ]; then
             mkdir -p "$KLIPPER_DIR/klippy"
             cp -R "$KSRC/klippy/." "$KLIPPER_DIR/klippy/"

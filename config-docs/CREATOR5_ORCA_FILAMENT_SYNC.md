@@ -6,7 +6,7 @@ lanes. `creator5_filament_sync` publishes T0 through T3 to Moonraker's
 filament sync control. This changes only the filament inventory shown in Orca.
 It does not select a tool, load filament, or change heater targets.
 
-After installing the updated `klipper-c5` and `printer.creator5.cfg`, use AFC's
+After installing the updated Kalico and `printer.creator5.cfg`, use AFC's
 filament commands from the Mainsail console. The standalone tool names for
 these commands are `T0` through `T3`:
 

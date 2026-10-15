@@ -1,6 +1,6 @@
 # Creator 5 Klippy toolchanger
 
-The host code lives in `klipper-c5/klippy/extras/creator5_toolchanger.py`.
+The host code lives in `kalico/klippy/extras/creator5_toolchanger.py`.
 `printer.base.cfg` includes `printer.creator5.cfg` and
 `printer.afc-standalone.cfg`. AFC owns T0 through T3. Install the AFC Klipper
 add-on before using this config; stock Klipper does not provide the

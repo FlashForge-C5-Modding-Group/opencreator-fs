@@ -1,16 +1,21 @@
 #!/bin/sh
 LAUNCHER_LOG="/tmp/opencreator.log"
+OC=/usr/data/opencreator/klipper
+KPY=$OC/klippy-env/bin/python
+export PATH=$PATH:/opt/bin
 
 log_launcher() {
     echo "$1" >> "$LAUNCHER_LOG"
 }
 
 while true; do
-    log_launcher "Klippy is starting..."
+    if [ -x "$KPY" ]; then
+        log_launcher "Klippy is starting..."
 
-    /opt/bin/python3 /usr/prog/klipper/klippy/klippy.py /usr/data/config/printer.cfg -l /usr/data/logs/printer.log -a /tmp/uds
+        "$KPY" "$OC/klipper/klippy/klippy.py" "$OC/config/printer.cfg" -l "$OC/logs/printer.log" -a /tmp/uds
 
-    log_launcher "If you see this, there's something seriously wrong! Consult printer.log or launch it manually via || /opt/bin/python3 /usr/prog/klipper/klippy/klippy.py /usr/data/config/printer.cfg -l /usr/data/logs/printer.log -a /tmp/uds || This is a warning that there's something SERIOUSLY WRONG and Klippy has not started properly!"
-    log_launcher "ERR CODE 0 - Klippy"
+        log_launcher "Klippy exited; see $OC/logs/printer.log. Restarting in 3 s."
+        log_launcher "ERR CODE 0 - Klippy"
+    fi
     sleep 3
 done

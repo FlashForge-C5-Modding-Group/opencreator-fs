@@ -54,7 +54,7 @@ pidof wpa_supplicant >/dev/null 2>&1 || wifi_index=
 sleep 10
 
 # Check for tunneled.sh override after Wi-Fi setup
-TUNNELED_SCRIPT="/usr/data/opencreator/firmware/tunneled.sh"
+TUNNELED_SCRIPT="/usr/data/opencreator/tunneled/tunneled.sh"
 if [ -x "$TUNNELED_SCRIPT" ]; then
     log_launcher "FE: Launching Tunneled Script ($TUNNELED_SCRIPT)..."
     exec "$TUNNELED_SCRIPT" >> "$LAUNCHER_LOG" 2>&1
