@@ -8,6 +8,14 @@ log_launcher() {
     echo "$1" >> "$LAUNCHER_LOG"
 }
 
+# AFC stops with an error while its variables file is missing or empty; it
+# fills the file in itself once it has state to save.
+AFC_VARS=$OC/config/AFC/AFC.var.unit
+if [ ! -s "$AFC_VARS" ]; then
+    mkdir -p "$OC/config/AFC"
+    echo '{}' > "$AFC_VARS"
+fi
+
 while true; do
     if [ -x "$KPY" ]; then
         log_launcher "Klippy is starting..."

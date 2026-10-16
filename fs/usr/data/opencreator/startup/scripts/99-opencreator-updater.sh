@@ -8,9 +8,10 @@
 # Installer installs keep a git clone of opencreator-fs in
 # /usr/data/opencreator/opencreator-fs that Moonraker's update manager
 # updates ([update_manager opencreator]). This script merges from it at boot
-# and then keeps watching it: after an update, the configs are merged and
-# Klipper restarted (once nothing is printing). Without the clone it falls
-# back to downloading the template once per boot.
+# and then keeps watching it: after an update, LoopScript's own files are
+# swapped in (used from the next boot), the configs are merged and Klipper
+# restarted (once nothing is printing). Without the clone it falls back to
+# downloading the config template once per boot.
 #
 # The first run has no base snapshot yet: it seeds the base and leaves live
 # files untouched.
@@ -21,6 +22,10 @@ CONFIG_DIR=/usr/data/opencreator/klipper/config
 BASE_DIR="$CONFIG_DIR/.opencreator-updater/base"
 APPLIED="$CONFIG_DIR/.opencreator-updater/applied-commit"
 CLONE=/usr/data/opencreator/opencreator-fs
+OCDIR=/usr/data/opencreator
+LOOPSCRIPT_APPLIED=$OCDIR/.loopscript-commit
+NGINX_CONF_D=/usr/data/nginx/conf.d
+FIRMWARE_EXE=/usr/prog/PROGRAM/software/firmwareExe
 WORK=/tmp/opencreator-updater.work
 KLIPPER_DIR=/usr/data/opencreator/klipper/klipper
 KLIPPER_HASH_MARKER=/usr/data/opencreator/.opencreator-updater-klipper-tar-sha256
@@ -96,8 +101,64 @@ restart_klipper() {
     fi
 }
 
+# LoopScript's own files: startup scripts, firmwareExe, the tunnel launcher,
+# the Moonraker component, the Fluidd layout and the nginx snippets. Each
+# folder is copied next to the live one and swapped in, so running scripts
+# (this one too) keep reading their old copy; the new ones run from the next
+# boot.
+sync_loopscript() {
+    src=$CLONE/fs/usr/data
+    ls_changed=0
+    for part in startup firmware tunneled moonraker fluidd; do
+        [ -d "$src/opencreator/$part" ] || continue
+        diff -r "$src/opencreator/$part" "$OCDIR/$part" >/dev/null 2>&1 && continue
+        rm -rf "$OCDIR/$part.new" "$OCDIR/$part.old"
+        cp -a "$src/opencreator/$part" "$OCDIR/$part.new" || { log "$part: copy failed"; continue; }
+        case $part in
+            startup) chmod 755 "$OCDIR/$part.new/startup.sh" "$OCDIR/$part.new"/scripts/*.sh ;;
+            firmware) chmod 755 "$OCDIR/$part.new/firmwareExe" ;;
+            # Executable means tunnel mode; keep whichever mode is set.
+            tunneled) if [ -x "$OCDIR/tunneled/tunneled.sh" ]; then mode=755; else mode=644; fi
+                      chmod "$mode" "$OCDIR/$part.new/tunneled.sh" ;;
+        esac
+        [ ! -d "$OCDIR/$part" ] || mv "$OCDIR/$part" "$OCDIR/$part.old"
+        mv "$OCDIR/$part.new" "$OCDIR/$part"
+        rm -rf "$OCDIR/$part.old"
+        log "loopscript $part: updated"
+        ls_changed=1
+    done
+    if ! cmp -s "$src/opencreator/version.txt" "$OCDIR/version.txt"; then
+        cp "$src/opencreator/version.txt" "$OCDIR/version.txt"
+    fi
+    for conf in "$src"/nginx/conf.d/*.conf; do
+        [ -f "$conf" ] || continue
+        cmp -s "$conf" "$NGINX_CONF_D/$(basename "$conf")" && continue
+        mkdir -p "$NGINX_CONF_D"
+        cp "$conf" "$NGINX_CONF_D/" && log "nginx $(basename "$conf"): updated" && ls_changed=1
+    done
+    # Only while the LoopScript launcher is in place (shell script, not
+    # FlashForge's ELF), so a rollback to stock is never undone.
+    if [ "$(dd if="$FIRMWARE_EXE" bs=1 skip=1 count=3 2>/dev/null)" != ELF ] &&
+        ! cmp -s "$OCDIR/firmware/firmwareExe" "$FIRMWARE_EXE"; then
+        cp "$OCDIR/firmware/firmwareExe" "$FIRMWARE_EXE.new" &&
+            chmod 755 "$FIRMWARE_EXE.new" && sync &&
+            mv "$FIRMWARE_EXE.new" "$FIRMWARE_EXE" && log "firmwareExe: updated" && ls_changed=1
+    fi
+    sync
+    if [ "$ls_changed" = 1 ]; then
+        curl -fsS --max-time 10 -X POST -H 'Content-Type: application/json' \
+            -d '{"script": "RESPOND MSG=\"OpenCreator startup files updated; they take effect after the next reboot.\""}' \
+            "$MOONRAKER_API/printer/gcode/script" >/dev/null 2>&1
+    fi
+}
+
 apply_clone() {
     head=$(git -C "$CLONE" rev-parse HEAD 2>/dev/null) || return
+    if [ "$head" != "$(cat "$LOOPSCRIPT_APPLIED" 2>/dev/null)" ]; then
+        log "syncing LoopScript files from opencreator-fs $head"
+        sync_loopscript
+        echo "$head" >"$LOOPSCRIPT_APPLIED"
+    fi
     [ "$head" != "$(cat "$APPLIED" 2>/dev/null)" ] || return
     log "applying opencreator-fs $head"
     CHANGED=0
