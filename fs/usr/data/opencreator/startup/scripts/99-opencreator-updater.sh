@@ -1,46 +1,128 @@
 #!/bin/sh
 # OpenCreator Updater (SoC/LoopScript v2 edition).
 #
-# On every boot: merges the latest fs/usr/data/config/*.cfg template from
-# opencreator-fs into the live /usr/data/opencreator/klipper/config, preserving values the
-# user has customized (speeds, spoolman, toggle defaults, etc), then
-# refreshes a non-git Klipper in /usr/data/opencreator/klipper/klipper. Dispatched
-# once per boot by startup.sh like every other script in this directory
-# -- there is no systemd here to trigger it from Moonraker's update
-# manager the way the Pi-tunnel version works (see
-# opencreator-tunnel/pi/opencreator-updater), so this runs unconditionally
-# at boot instead of on demand.
+# Merges the fs/usr/data/config/*.cfg template from opencreator-fs into the
+# live /usr/data/opencreator/klipper/config, keeping the user's own edits
+# (diff of the template since the last run, patched onto the live file).
 #
-# This image's buildroot has no git -- only Entware's /opt/bin/git, which
-# by project convention is off-limits (use what actually ships on this
-# image, not /opt; see firmwareExe in the tunnel setup for the same rule
-# applied to Python). So merging uses plain diff+patch instead of git
-# merge-file: the template's changes since the last run are turned into a
-# patch (diff -u base latest) and applied onto the live file. If that
-# patch applies cleanly, the user's independent edits elsewhere in the
-# file survive (patch only touches the context around lines that
-# actually changed upstream). If it does not apply cleanly, that means
-# the template changed a line the user also changed -- left alone and
-# logged as a conflict rather than guessed at.
+# Installer installs keep a git clone of opencreator-fs in
+# /usr/data/opencreator/opencreator-fs that Moonraker's update manager
+# updates ([update_manager opencreator]). This script merges from it at boot
+# and then keeps watching it: after an update, the configs are merged and
+# Klipper restarted (once nothing is printing). Without the clone it falls
+# back to downloading the template once per boot.
 #
-# First run has no base snapshot yet, so there is nothing to diff the
-# template against: it seeds the base and leaves live files untouched.
-# Real auto-merging starts on the run after that one, same as the
-# Pi-tunnel version and for the same reason -- there is no reliable way
-# to know what template version a pre-existing live file started from.
+# The first run has no base snapshot yet: it seeds the base and leaves live
+# files untouched.
 set -u
 
 LOG=/tmp/opencreator-updater.log
 CONFIG_DIR=/usr/data/opencreator/klipper/config
 BASE_DIR="$CONFIG_DIR/.opencreator-updater/base"
+APPLIED="$CONFIG_DIR/.opencreator-updater/applied-commit"
+CLONE=/usr/data/opencreator/opencreator-fs
 WORK=/tmp/opencreator-updater.work
 KLIPPER_DIR=/usr/data/opencreator/klipper/klipper
 KLIPPER_HASH_MARKER=/usr/data/opencreator/.opencreator-updater-klipper-tar-sha256
 FS_URL=https://github.com/FlashForge-C5-Modding-Group/opencreator-fs/archive/refs/heads/main.tar.gz
 KLIPPER_URL=https://github.com/FlashForge-C5-Modding-Group/kalico/archive/refs/heads/something.tar.gz
 MOONRAKER_API=http://127.0.0.1:7125
+export PATH=$PATH:/opt/bin
 
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >>"$LOG"; }
+
+# merge_configs TEMPLATE_DIR: sets CHANGED and CONFLICTS.
+merge_configs() {
+    TEMPLATE_DIR=$1
+    mkdir -p "$WORK" "$BASE_DIR"
+    for template in "$TEMPLATE_DIR"/*.cfg; do
+        name=$(basename "$template")
+        live="$CONFIG_DIR/$name"
+        base="$BASE_DIR/$name"
+
+        if [ ! -f "$live" ]; then
+            cp "$template" "$live"
+            cp "$template" "$base"
+            log "$name: new"
+            CHANGED=1
+            continue
+        fi
+        if [ ! -f "$base" ]; then
+            cp "$template" "$base"
+            log "$name: bootstrap (tracking only, live file untouched)"
+            continue
+        fi
+        if cmp -s "$base" "$template"; then
+            log "$name: unchanged"
+            continue
+        fi
+
+        # CRLF in any of the three would make every context line mismatch.
+        tr -d '\r' <"$base" >"$WORK/$name.base"
+        tr -d '\r' <"$template" >"$WORK/$name.template"
+        tr -d '\r' <"$live" >"$WORK/$name.live"
+        diff -u "$WORK/$name.base" "$WORK/$name.template" >"$WORK/$name.patch" 2>/dev/null
+        # Default fuzz: exact context breaks when the user edited a nearby line.
+        if patch --no-backup-if-mismatch -o "$WORK/$name.merged" "$WORK/$name.live" \
+            <"$WORK/$name.patch" >"$WORK/$name.patchlog" 2>&1; then
+            mv "$WORK/$name.merged" "$live"
+            cp "$template" "$base"
+            log "$name: merged"
+            CHANGED=1
+        else
+            CONFLICTS="$CONFLICTS $name"
+            log "$name: CONFLICT -- template changed a line the live config" \
+                "also changed; leaving both files as-is."
+        fi
+    done
+}
+
+printing() {
+    curl -fsS --max-time 5 "$MOONRAKER_API/printer/objects/query?print_stats=state" 2>/dev/null |
+        grep -Eq '"state": *"(printing|paused)"'
+}
+
+restart_klipper() {
+    if [ -n "$CONFLICTS" ]; then
+        log "CONFLICTS in:$CONFLICTS -- resolve by hand, then restart Klipper"
+        return
+    fi
+    [ "$CHANGED" = 1 ] || { log "nothing changed"; return; }
+    while printing; do sleep 60; done
+    if curl -fsS --max-time 10 -X POST "$MOONRAKER_API/printer/restart" >/dev/null 2>&1; then
+        log "klipper restart requested via Moonraker API"
+    else
+        log "klipper restart request failed; restart manually"
+    fi
+}
+
+apply_clone() {
+    head=$(git -C "$CLONE" rev-parse HEAD 2>/dev/null) || return
+    [ "$head" != "$(cat "$APPLIED" 2>/dev/null)" ] || return
+    log "applying opencreator-fs $head"
+    CHANGED=0
+    CONFLICTS=""
+    rm -rf "$WORK"
+    merge_configs "$CLONE/fs/usr/data/config"
+    rm -rf "$WORK"
+    mkdir -p "$(dirname "$APPLIED")"
+    echo "$head" >"$APPLIED"
+    restart_klipper
+}
+
+if [ -d "$CLONE/.git" ]; then
+    # Wait for Moonraker so a restart request can reach it.
+    i=0
+    until curl -fs --max-time 5 "$MOONRAKER_API/server/info" >/dev/null 2>&1; do
+        i=$((i + 1))
+        [ "$i" -ge 120 ] && break
+        sleep 5
+    done
+    while true; do
+        apply_clone
+        sleep 60
+    done
+fi
 
 rm -rf "$WORK"
 mkdir -p "$WORK" "$BASE_DIR"
@@ -72,61 +154,7 @@ fi
 
 CHANGED=0
 CONFLICTS=""
-for template in "$TEMPLATE_DIR"/*.cfg; do
-    name=$(basename "$template")
-    live="$CONFIG_DIR/$name"
-    base="$BASE_DIR/$name"
-
-    if [ ! -f "$live" ]; then
-        cp "$template" "$live"
-        cp "$template" "$base"
-        log "$name: new"
-        CHANGED=1
-        continue
-    fi
-    if [ ! -f "$base" ]; then
-        cp "$template" "$base"
-        log "$name: bootstrap (tracking only, live file untouched)"
-        continue
-    fi
-    if cmp -s "$base" "$template"; then
-        log "$name: unchanged"
-        continue
-    fi
-
-    # Normalize CRLF before diffing/patching: a live file that picked up
-    # CRLF endings at some point (this repo is maintained on Windows, so
-    # it's not guaranteed every path that lands a config on the printer
-    # keeps it LF-only) would otherwise fail every context-line match
-    # against an LF-only base/template, since patch compares lines as
-    # exact strings including the trailing \r. That just means a wasted
-    # conflict report here (patch's own all-or-nothing hunk application
-    # means a mismatch never reaches `mv`, so the live file was never at
-    # risk of corruption the way the Pi-side git-merge-file tool was),
-    # but it is still worth avoiding -- normalize all three to LF for
-    # the comparison, and write the merged result back as LF too.
-    tr -d '\r' <"$base" >"$WORK/$name.base"
-    tr -d '\r' <"$template" >"$WORK/$name.template"
-    tr -d '\r' <"$live" >"$WORK/$name.live"
-    diff -u "$WORK/$name.base" "$WORK/$name.template" >"$WORK/$name.patch" 2>/dev/null
-    # Default fuzz (not 0): tested empirically -- a strict exact-context
-    # match breaks the common case where the template's hunk context
-    # happens to border a line the user independently customized nearby
-    # (not the changed line itself), which is routine in these configs.
-    if patch --no-backup-if-mismatch -o "$WORK/$name.merged" "$WORK/$name.live" \
-        <"$WORK/$name.patch" >"$WORK/$name.patchlog" 2>&1; then
-        mv "$WORK/$name.merged" "$live"
-        cp "$template" "$base"
-        log "$name: merged"
-        CHANGED=1
-    else
-        CONFLICTS="$CONFLICTS $name"
-        log "$name: CONFLICT -- template changed a line the live config" \
-            "also changed; leaving both files as-is." \
-            "See $WORK/$name.patchlog before it's cleaned up, or rerun" \
-            "to regenerate it."
-    fi
-done
+merge_configs "$TEMPLATE_DIR"
 
 log "refreshing klipper source"
 if [ -d "$KLIPPER_DIR/.git" ]; then
@@ -153,16 +181,5 @@ else
     log "klipper: download failed, leaving current install alone"
 fi
 
-if [ -n "$CONFLICTS" ]; then
-    log "CONFLICTS in:$CONFLICTS -- resolve by hand, then restart Klipper"
-elif [ "$CHANGED" = 1 ]; then
-    if curl -fsS --max-time 10 -X POST "$MOONRAKER_API/printer/restart" >/dev/null 2>&1; then
-        log "klipper restart requested via Moonraker API"
-    else
-        log "klipper restart request failed; restart manually"
-    fi
-else
-    log "nothing changed"
-fi
-
+restart_klipper
 rm -rf "$WORK"
