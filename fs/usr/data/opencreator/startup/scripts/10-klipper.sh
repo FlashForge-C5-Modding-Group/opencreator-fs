@@ -2,7 +2,8 @@
 LAUNCHER_LOG="/tmp/opencreator.log"
 OC=/usr/data/opencreator/klipper
 KPY=$OC/klippy-env/bin/python
-export PATH=$PATH:/opt/bin
+# python-hf/cc/bin/gcc rebuilds c_helper.so (hard-float) after Kalico updates.
+export PATH=/usr/data/python-hf/cc/bin:$PATH:/opt/bin
 
 log_launcher() {
     echo "$1" >> "$LAUNCHER_LOG"

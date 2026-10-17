@@ -103,17 +103,45 @@ restart_klipper() {
 
 # LoopScript's own files: startup scripts, firmwareExe, the tunnel launcher,
 # the Moonraker component, the Fluidd layout and the nginx snippets. Each
-# folder is copied next to the live one and swapped in, so running scripts
-# (this one too) keep reading their old copy; the new ones run from the next
-# boot.
+# folder is copied next to the live one, the new files are laid over the
+# copy (user-added files stay) and it is swapped in, so running scripts (this
+# one too) keep reading their old copy; the new ones run from the next boot.
+# $OCDIR/.installed/<part>.md5 lists what was installed (shared with the
+# installer): a listed file opencreator-fs dropped is removed if unchanged.
+overlay_dir() {  # overlay_dir SRC DEST MANIFEST: copy SRC's files over DEST
+    find "$1" -type f | sed "s#^$1/##" | while IFS= read -r f; do
+        mkdir -p "$2/$(dirname "$f")"
+        cp -p "$1/$f" "$2/$f"
+        echo "$(md5sum <"$1/$f" | cut -d' ' -f1)  $f"
+    done >"$3.new"
+    if [ -f "$3" ]; then
+        while IFS= read -r line; do
+            f=${line#*  }
+            [ -f "$1/$f" ] || [ ! -f "$2/$f" ] && continue
+            [ "$(md5sum <"$2/$f" | cut -d' ' -f1)  $f" = "$line" ] && rm -f "$2/$f"
+        done <"$3"
+    fi
+    return 0
+}
+part_current() {  # part_current SRC DEST: every SRC file already in DEST
+    (cd "$1" && find . -type f) | while IFS= read -r f; do
+        cmp -s "$1/$f" "$2/$f" || exit 1
+    done
+}
 sync_loopscript() {
     src=$CLONE/fs/usr/data
     ls_changed=0
+    mkdir -p "$OCDIR/.installed"
     for part in startup firmware tunneled moonraker fluidd; do
         [ -d "$src/opencreator/$part" ] || continue
-        diff -r "$src/opencreator/$part" "$OCDIR/$part" >/dev/null 2>&1 && continue
+        part_current "$src/opencreator/$part" "$OCDIR/$part" && continue
         rm -rf "$OCDIR/$part.new" "$OCDIR/$part.old"
-        cp -a "$src/opencreator/$part" "$OCDIR/$part.new" || { log "$part: copy failed"; continue; }
+        if [ -d "$OCDIR/$part" ]; then
+            cp -a "$OCDIR/$part" "$OCDIR/$part.new" || { log "$part: copy failed"; continue; }
+        fi
+        manifest=$OCDIR/.installed/$part.md5
+        overlay_dir "$src/opencreator/$part" "$OCDIR/$part.new" "$manifest" ||
+            { log "$part: copy failed"; rm -rf "$OCDIR/$part.new"; continue; }
         case $part in
             startup) chmod 755 "$OCDIR/$part.new/startup.sh" "$OCDIR/$part.new"/scripts/*.sh ;;
             firmware) chmod 755 "$OCDIR/$part.new/firmwareExe" ;;
@@ -123,6 +151,7 @@ sync_loopscript() {
         esac
         [ ! -d "$OCDIR/$part" ] || mv "$OCDIR/$part" "$OCDIR/$part.old"
         mv "$OCDIR/$part.new" "$OCDIR/$part"
+        mv "$manifest.new" "$manifest"
         rm -rf "$OCDIR/$part.old"
         log "loopscript $part: updated"
         ls_changed=1
@@ -154,7 +183,12 @@ sync_loopscript() {
 
 apply_clone() {
     head=$(git -C "$CLONE" rev-parse HEAD 2>/dev/null) || return
-    if [ "$head" != "$(cat "$LOOPSCRIPT_APPLIED" 2>/dev/null)" ]; then
+    # First run: the installed files came from this clone (or are newer, if
+    # changed by hand), so only record where it is; sync from the next update.
+    if [ ! -f "$LOOPSCRIPT_APPLIED" ]; then
+        log "LoopScript files: tracking from opencreator-fs $head"
+        echo "$head" >"$LOOPSCRIPT_APPLIED"
+    elif [ "$head" != "$(cat "$LOOPSCRIPT_APPLIED" 2>/dev/null)" ]; then
         log "syncing LoopScript files from opencreator-fs $head"
         sync_loopscript
         echo "$head" >"$LOOPSCRIPT_APPLIED"

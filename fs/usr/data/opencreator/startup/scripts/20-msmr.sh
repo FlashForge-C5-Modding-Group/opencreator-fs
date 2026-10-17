@@ -4,6 +4,9 @@ OC=/usr/data/opencreator/klipper
 MOONRAKER=/usr/prog/moonraker/moonraker
 MPY=/usr/prog/moonraker/moonraker-env/bin/python
 export PATH=$PATH:/opt/bin
+# pip (Moonraker's update manager) builds zeroconf as plain Python, and finds
+# python-hf's zlib/libjpeg for Pillow through CFLAGS/LDFLAGS.
+export SKIP_CYTHON=1 CFLAGS="-I/usr/data/python-hf/include" LDFLAGS="-L/usr/data/python-hf/lib"
 # HOME is the read-only / at boot; Moonraker's update manager runs pip.
 if [ -z "${HOME:-}" ] || [ "$HOME" = / ]; then
     export HOME=/usr/data/opencreator/home
@@ -14,10 +17,12 @@ log_launcher() {
     echo "$1" >> "$LAUNCHER_LOG"
 }
 
-ln -sf /usr/data/opencreator/moonraker/opencreator_3mf.py \
-    "$MOONRAKER/moonraker/components/opencreator_3mf.py"
-grep -q '^\[opencreator_3mf\]' "$OC/config/moonraker.conf" ||
-    printf '\n[opencreator_3mf]\n' >> "$OC/config/moonraker.conf"
+for component in opencreator_3mf opencreator_machine; do
+    ln -sf "/usr/data/opencreator/moonraker/$component.py" \
+        "$MOONRAKER/moonraker/components/$component.py"
+    grep -q "^\[$component\]" "$OC/config/moonraker.conf" ||
+        printf '\n[%s]\n' "$component" >> "$OC/config/moonraker.conf"
+done
 [ -e "$OC/gcodes" ] || [ -L "$OC/gcodes" ] || ln -s /usr/data/gcodes "$OC/gcodes"
 mkdir -p "$OC/tmp"
 

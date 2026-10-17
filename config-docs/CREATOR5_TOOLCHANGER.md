@@ -199,7 +199,7 @@ Fluidd/Mainsail prompt: all tools or one tool, then build-plate removal, then
 All-tool calibration offers to home first, with the plate still installed,
 if the printer is not homed. The final answer runs the command below with
 the matching arguments. The prompt is built into the toolchanger module of
-both klipper-c5 and Kalico as `C5_OFFSET_WIZARD`; the firmware's own
+Kalico as `C5_OFFSET_WIZARD`; the firmware's own
 `C5_TOOL_OFFSET_CALIBRATE` and `C5_CALIBRATE_ALL_OFFSETS` open it too when
 run without arguments (the latter starting at the plate step).
 
@@ -229,7 +229,7 @@ writing `extruder.json`, possibly with a head still attached. Inspect the
 tool and sensor state before resuming.
 
 The factory `ff_eddy.py`, `e_stop.py`, and `hd_home.py` Klippy modules are
-present in `klipper-c5`. This port fixes their incompatible probe call and
+present in Kalico. This port fixes their incompatible probe call and
 the `REMOVE_PEEL` response handler. Keep the stock `[ff_eddy levelboard]`,
 `[e_stop X]`, `[e_stop Y]`, and `[e_stop Z]` sections in the printer config.
 

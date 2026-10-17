@@ -1,7 +1,7 @@
 # MPC hotend control (Kalico only)
 
 Kalico's Model Predictive Control replaces PID for the four hotends. Stock
-Klipper (klipper-c5) has no MPC, so it is split in two:
+Klipper has no MPC (nor did the archived klipper-c5), so it is split in two:
 
 - `printer.mpc.cfg` (always installed) holds MPC-aware macros. Each one checks
   that the heater reports Kalico's `pid_profile` status **and** is configured
