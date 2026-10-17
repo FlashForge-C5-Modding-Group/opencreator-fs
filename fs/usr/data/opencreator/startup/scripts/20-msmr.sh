@@ -4,9 +4,11 @@ OC=/usr/data/opencreator/klipper
 MOONRAKER=/usr/prog/moonraker/moonraker
 MPY=/usr/prog/moonraker/moonraker-env/bin/python
 export PATH=$PATH:/opt/bin
-# pip (Moonraker's update manager) builds zeroconf as plain Python, and finds
-# python-hf's zlib/libjpeg for Pillow through CFLAGS/LDFLAGS.
+# pip (Moonraker's update manager) builds zeroconf as plain Python, finds
+# python-hf's zlib/libjpeg for Pillow through CFLAGS/LDFLAGS, and keeps its
+# own cache: Entware's soft-float wheels carry the same tag.
 export SKIP_CYTHON=1 CFLAGS="-I/usr/data/python-hf/include" LDFLAGS="-L/usr/data/python-hf/lib"
+export PIP_CACHE_DIR=/usr/data/opencreator/home/.cache/pip-hf
 # HOME is the read-only / at boot; Moonraker's update manager runs pip.
 if [ -z "${HOME:-}" ] || [ "$HOME" = / ]; then
     export HOME=/usr/data/opencreator/home
