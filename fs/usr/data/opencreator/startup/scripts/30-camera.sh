@@ -8,8 +8,9 @@ log_launcher "Launching Webcam..."
 
 export LD_LIBRARY_PATH=/usr/prog/mjpg-streamer
 
-# id=value: white balance auto on, saturation 100, contrast 33, hue -20
-CONTROLS="9963788=1 9963778=100 9963777=33 9963779=-20"
+# id=value: white balance auto off, white balance 4800K (auto comes out
+# blue, 5500K and up orange), saturation 100, contrast 33, hue -20
+CONTROLS="9963788=0 9963802=4800 9963778=100 9963777=33 9963779=-20"
 
 apply_controls() {
   sleep 5
