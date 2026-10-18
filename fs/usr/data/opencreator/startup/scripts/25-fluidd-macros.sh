@@ -2,6 +2,9 @@
 API=http://127.0.0.1:7125/server/database/item
 MACROS=/usr/data/opencreator/fluidd/macros.json
 export PATH=$PATH:/opt/bin
+# FlashForge's startup passes on its LD_LIBRARY_PATH, whose old libcurl
+# breaks curl (undefined symbol curl_mime_free); nothing here needs it.
+unset LD_LIBRARY_PATH
 [ -f "$MACROS" ] || exit 0
 
 i=0

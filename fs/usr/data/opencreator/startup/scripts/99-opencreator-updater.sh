@@ -33,6 +33,9 @@ FS_URL=https://github.com/FlashForge-C5-Modding-Group/opencreator-fs/archive/ref
 KLIPPER_URL=https://github.com/FlashForge-C5-Modding-Group/kalico/archive/refs/heads/something.tar.gz
 MOONRAKER_API=http://127.0.0.1:7125
 export PATH=$PATH:/opt/bin
+# FlashForge's startup passes on its LD_LIBRARY_PATH, whose old libcurl
+# breaks curl (undefined symbol curl_mime_free); nothing here needs it.
+unset LD_LIBRARY_PATH
 
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >>"$LOG"; }
 
@@ -63,13 +66,19 @@ merge_configs() {
         fi
 
         # CRLF in any of the three would make every context line mismatch.
-        tr -d '\r' <"$base" >"$WORK/$name.base"
-        tr -d '\r' <"$template" >"$WORK/$name.template"
+        # The SAVE_CONFIG block is the printer's own calibration (shaper,
+        # PID, meshes, skew): the template's copy only seeds new installs,
+        # so its changes are left out.
+        tr -d '\r' <"$base" | sed '/^#\*# <-* SAVE_CONFIG -*>/,$d' >"$WORK/$name.base"
+        tr -d '\r' <"$template" | sed '/^#\*# <-* SAVE_CONFIG -*>/,$d' >"$WORK/$name.template"
         tr -d '\r' <"$live" >"$WORK/$name.live"
         diff -u "$WORK/$name.base" "$WORK/$name.template" >"$WORK/$name.patch" 2>/dev/null
         # Default fuzz: exact context breaks when the user edited a nearby line.
-        if patch --no-backup-if-mismatch -o "$WORK/$name.merged" "$WORK/$name.live" \
-            <"$WORK/$name.patch" >"$WORK/$name.patchlog" 2>&1; then
+        # A copy is patched in place: the printer's busybox patch has no -o
+        # or --no-backup-if-mismatch (any backup/reject files stay in WORK).
+        cp "$WORK/$name.live" "$WORK/$name.merged"
+        if patch "$WORK/$name.merged" <"$WORK/$name.patch" \
+            >"$WORK/$name.patchlog" 2>&1; then
             mv "$WORK/$name.merged" "$live"
             cp "$template" "$base"
             log "$name: merged"
