@@ -501,11 +501,9 @@ tool in place while preserving the paused G-code state. It does not select a
 tool, travel to the bucket, cool, or dock across the part. Explicit tool
 selection requires an idle print.
 
-`C5_COOL_FOR_DOCK HOTEND=...` takes the operation's temperature, not the current
-measured temperature, and cools to that value minus 100 C. The Klippy command
-rejects nonfinite values and operating temperatures below 150 C before motion
-or heater changes. It still accepts the rotation-calibration temperature range
-up to 320 C; the loading macro's 300 C limit does not constrain calibration.
+The loader passes its chosen loading temperature to `C5_COOL_FOR_DOCK`, not
+the measured nozzle temperature. The existing cooldown calculation remains
+`max(0, HOTEND - 100)`; no change to the Klippy cooldown command is required.
 
 This implementation has been compiled and statically checked on the host.
 Physical sensor polarity, fixture height, four mount coordinates, and
