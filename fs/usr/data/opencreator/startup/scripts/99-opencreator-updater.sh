@@ -21,7 +21,7 @@ LOG=/tmp/opencreator-updater.log
 CONFIG_DIR=/usr/data/opencreator/klipper/config
 BASE_DIR="$CONFIG_DIR/.opencreator-updater/base"
 APPLIED="$CONFIG_DIR/.opencreator-updater/applied-commit"
-MERGE_VERSION=1
+MERGE_VERSION=2
 MERGE_VERSION_FILE="$CONFIG_DIR/.opencreator-updater/merge-version"
 CLONE=/usr/data/opencreator/opencreator-fs
 OCDIR=/usr/data/opencreator
@@ -48,20 +48,38 @@ normalize_config() {
         sed '/^#\*# <-* SAVE_CONFIG -*>/,$d' "$2.crlf" >"$2"
 }
 
-# recover_baseline NAME NORMALIZED_LIVE: 0 = match, 1 = no match,
-# 2 = unavailable history. A candidate stays in WORK until publication.
+# Historical lookup: 0 = exact match, 1 = complete no-match,
+# 2 = unavailable history. Candidates stay in WORK until publication.
 recover_baseline() {
     if [ "$HISTORY_STATE" = untried ]; then
-        HISTORY_STATE=failed
-        if [ "$(git -C "$CLONE" rev-parse --is-shallow-repository 2>/dev/null)" = false ]; then
-            HISTORY_REPO=$CLONE
-            HISTORY_STATE=ready
-        elif git clone -q "$FS_GIT_URL" "$WORK/history" >>"$LOG" 2>&1; then
-            HISTORY_REPO="$WORK/history"
-            HISTORY_STATE=ready
-        fi
+        HISTORY_STATE=shallow
+        HISTORY_REPO=$CLONE
+        case $(git -C "$CLONE" rev-parse --is-shallow-repository 2>/dev/null) in
+            false) HISTORY_STATE=ready ;;
+            true) ;;
+            *) HISTORY_REPO="" ;;
+        esac
     fi
-    [ "$HISTORY_STATE" = ready ] || return 2
+    # A shallow checkout may already contain the exact installed template.
+    # A local miss is conclusive only when that checkout has complete history.
+    if [ -n "$HISTORY_REPO" ]; then
+        search_baseline "$1" "$2"
+        history_status=$?
+        [ "$history_status" = 0 ] && return 0
+        [ "$history_status" = 2 ] && return 2
+        [ "$HISTORY_STATE" = ready ] && return 1
+    fi
+    [ "$HISTORY_STATE" != failed ] || return 2
+    HISTORY_STATE=failed
+    if ! git clone -q --no-checkout "$FS_GIT_URL" "$WORK/history" >>"$LOG" 2>&1; then
+        return 2
+    fi
+    HISTORY_REPO="$WORK/history"
+    HISTORY_STATE=ready
+    search_baseline "$1" "$2"
+}
+
+search_baseline() {
     history_path=fs/usr/data/config/$1
     git -C "$HISTORY_REPO" log --diff-filter=AM --format=%H HEAD -- "$history_path" \
         >"$WORK/history.commits" 2>>"$LOG" || return 2
@@ -116,6 +134,9 @@ merge_configs() {
     TEMPLATE_DIR=$1
     HISTORY_STATE=untried
     HISTORY_REPO=""
+    MIGRATION_PENDING=0
+    [ "$MERGE_VERSION" = "$(cat "$MERGE_VERSION_FILE" 2>/dev/null)" ] ||
+        MIGRATION_PENDING=1
     if ! mkdir -p "$WORK" "$BASE_DIR"; then
         CONFLICTS="$CONFLICTS config-state"
         return
@@ -132,7 +153,8 @@ merge_configs() {
         base="$BASE_DIR/$name"
 
         if [ ! -f "$live" ]; then
-            if publish_config "$template" "$template" "$live" "$base"; then
+            if publish_config "$template" "$template" "$live" "$base" \
+                >>"$LOG" 2>&1; then
                 log "$name: new"
                 CHANGED=1
             else
@@ -141,10 +163,10 @@ merge_configs() {
             fi
             continue
         fi
-        # Historical recovery of a tracking-only base is a one-time migration.
+        # Historical recovery of poisoned bases is a one-time migration.
         # Afterwards an unchanged template must preserve deliberate user reverts.
-        if [ -f "$base" ] && cmp -s "$base" "$template" &&
-            [ "$MERGE_VERSION" = "$(cat "$MERGE_VERSION_FILE" 2>/dev/null)" ]; then
+        if [ "$MIGRATION_PENDING" = 0 ] &&
+            [ -f "$base" ] && cmp -s "$base" "$template"; then
             log "$name: unchanged"
             continue
         fi
@@ -156,32 +178,35 @@ merge_configs() {
             log "$name: CONFLICT -- could not normalize config"
             continue
         fi
-        merge_base=$base
-        if [ ! -f "$base" ] || cmp -s "$base" "$template"; then
-            if cmp -s "$WORK/$name.compare" "$WORK/$name.template"; then
-                if [ ! -f "$base" ]; then
-                    if [ ! -d "$base" ] &&
-                        cp "$template" "$base.opencreator-new" &&
-                        mv "$base.opencreator-new" "$base"; then
-                        log "$name: current config, baseline seeded"
-                    else
-                        rm -f "$base.opencreator-new"
-                        CONFLICTS="$CONFLICTS $name"
-                        log "$name: CONFLICT -- could not seed baseline"
-                    fi
+        # The live file is already current: synchronize its baseline without
+        # touching live bytes or calibration, even if an older base exists.
+        if cmp -s "$WORK/$name.compare" "$WORK/$name.template"; then
+            if ! cmp -s "$base" "$template"; then
+                if [ ! -d "$base" ] &&
+                    cp "$template" "$base.opencreator-new" 2>>"$LOG" &&
+                    mv "$base.opencreator-new" "$base" 2>>"$LOG"; then
+                    log "$name: current config, baseline synchronized"
+                else
+                    rm -f "$base.opencreator-new"
+                    CONFLICTS="$CONFLICTS $name"
+                    log "$name: CONFLICT -- could not synchronize baseline"
                 fi
-                continue
             fi
+            continue
+        fi
+        merge_base=$base
+        if [ ! -f "$base" ] || [ "$MIGRATION_PENDING" = 1 ]; then
             recover_baseline "$name" "$WORK/$name.compare"
             recovery_status=$?
             if [ "$recovery_status" = 0 ]; then
                 merge_base="$WORK/$name.recovered"
                 log "$name: recovered historical baseline"
             elif [ "$recovery_status" = 1 ] && [ -f "$base" ]; then
-                # A current known base with no exact historical match is a
-                # legitimate user edit, not evidence of stale bootstrapping.
-                log "$name: unchanged template, preserving user edits"
-                continue
+                if cmp -s "$base" "$template"; then
+                    log "$name: unchanged template, preserving user edits"
+                    continue
+                fi
+                # No exact match: retain the known base and merge user edits.
             else
                 CONFLICTS="$CONFLICTS $name"
                 log "$name: CONFLICT -- no safe historical baseline" \
@@ -196,21 +221,35 @@ merge_configs() {
             log "$name: CONFLICT -- could not prepare merge"
             continue
         fi
-        diff -u "$WORK/$name.base" "$WORK/$name.template" >"$WORK/$name.patch" 2>/dev/null
+        diff -u "$WORK/$name.base" "$WORK/$name.template" \
+            >"$WORK/$name.patch" 2>>"$LOG"
         diff_status=$?
-        # BusyBox patch has no -o or --no-backup-if-mismatch. All rejects
-        # remain in WORK; only a successful complete merge reaches live.
-        if [ "$diff_status" -le 1 ] &&
-            cp "$WORK/$name.live" "$WORK/$name.merged" &&
-            patch "$WORK/$name.merged" <"$WORK/$name.patch" \
-                >"$WORK/$name.patchlog" 2>&1 &&
-            publish_config "$WORK/$name.merged" "$template" "$live" "$base"; then
+        log "$name: template diff status $diff_status"
+        if [ "$diff_status" -gt 1 ] ||
+            ! cp "$WORK/$name.live" "$WORK/$name.merged"; then
+            CONFLICTS="$CONFLICTS $name"
+            log "$name: CONFLICT -- could not prepare template patch"
+            continue
+        fi
+        # BusyBox patch has no -o or --no-backup-if-mismatch. Only a
+        # successful complete merge reaches live; preserve failures in LOG.
+        if patch "$WORK/$name.merged" <"$WORK/$name.patch" \
+            >"$WORK/$name.patchlog" 2>&1; then
+            :
+        else
+            patch_status=$?
+            CONFLICTS="$CONFLICTS $name"
+            log "$name: CONFLICT -- patch failed (status $patch_status)"
+            cat "$WORK/$name.patchlog" >>"$LOG"
+            continue
+        fi
+        if publish_config "$WORK/$name.merged" "$template" "$live" "$base" \
+            >>"$LOG" 2>&1; then
             log "$name: merged"
             CHANGED=1
         else
             CONFLICTS="$CONFLICTS $name"
-            log "$name: CONFLICT -- merge or publication failed;" \
-                "resolve live config and baseline before retrying"
+            log "$name: CONFLICT -- publication failed; live/base require resolution"
         fi
     done
 }
