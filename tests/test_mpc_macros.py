@@ -36,7 +36,7 @@ def variables(body):
 
 def render(path, name, printer, params, rawparams=""):
     body = section(path, name)
-    gcode = textwrap.dedent(body.split("\ngcode:\n", 1)[1])
+    gcode = textwrap.dedent(body.split("gcode:\n", 1)[1])
     template = jinja2.Environment("{%", "%}", "{", "}").from_string(gcode)
 
     def fail(message):
@@ -48,6 +48,18 @@ def render(path, name, printer, params, rawparams=""):
                           **variables(body))
     return [line.strip() for line in out.splitlines()
             if line.strip() and not line.strip().startswith("#")]
+
+
+def render_print_start(printer, params):
+    output = []
+    for line in render(START_CONFIG, "gcode_macro _C5_PRINT_START_AFTER_BOOT",
+                       printer, params):
+        if line.split()[0] == "_OC_PRINT_START_REST":
+            output.extend(render(START_CONFIG, "gcode_macro _OC_PRINT_START_REST",
+                                 printer, params))
+        else:
+            output.append(line)
+    return output
 
 
 def printer_state(kalico=True, control="mpc", bed_control="pid",
@@ -167,13 +179,12 @@ class PrintStartMaterialTests(unittest.TestCase):
             "output_pin purge": {"value": 0.},
             "output_pin bed_leveling": {"value": 0.},
             "bed_mesh": {"profiles": {}},
+            "creator5_toolchanger": {"build_plate_detected": True},
         }
         for heater in ("extruder", "extruder1", "extruder2", "extruder3"):
             printer["filament_switch_sensor %s_tool_start" % heater] = {
                 "filament_detected": True}
-        return [line for line in render(START_CONFIG,
-                                        "gcode_macro C5_PRINT_START",
-                                        printer, params)
+        return [line for line in render_print_start(printer, params)
                 if line.startswith("_SET_MPC_MATERIAL")]
 
     def test_per_tool_materials(self):
@@ -195,21 +206,23 @@ class PrintStartPlateCheckTests(unittest.TestCase):
             "output_pin purge": {"value": 0.},
             "output_pin bed_leveling": {"value": 0.},
             "bed_mesh": {"profiles": {}},
+            "creator5_toolchanger": {"build_plate_detected": True},
             "filament_switch_sensor extruder_tool_start": {
                 "filament_detected": True},
         }
-        return render(START_CONFIG, "gcode_macro C5_PRINT_START", printer,
-                      dict({"TOOL": "0", "HOTEND": "220"}, **params))
+        return render_print_start(
+            printer, dict({"TOOL": "0", "HOTEND": "220"}, **params))
 
     def test_checks_plate_right_after_homing(self):
         out = self.start({})
         home = out.index("C5_HOME_FOR_PRINT")
-        self.assertEqual(out[home + 1], "C5_CHECK_BUILD_PLATE")
+        self.assertTrue(out[home + 1].startswith("C5_CHECK_BUILD_PLATE "))
         self.assertLess(home + 1, out.index("M140 S0.0"))
 
     def test_can_be_skipped(self):
-        self.assertNotIn("C5_CHECK_BUILD_PLATE",
-                         self.start({"BUILDPLATE_CHECK": "0"}))
+        self.assertFalse(any(
+            line.startswith("C5_CHECK_BUILD_PLATE")
+            for line in self.start({"BUILDPLATE_CHECK": "0"})))
 
     def test_rejects_bad_value(self):
         with self.assertRaisesRegex(RaisedError, "BUILDPLATE_CHECK"):
