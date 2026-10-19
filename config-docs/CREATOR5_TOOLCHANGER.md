@@ -474,11 +474,21 @@ For standalone loading, insert filament manually until AFC reports the
 toolhead sensor loaded. `C5_PREPARE_LOAD_T0` through `C5_PREPARE_LOAD_T3`
 (optional `TEMP=...`, default 220 C) select and heat the requested tool;
 `C5_PREPARE_FILAMENT_LOAD TOOL=0 TEMP=220` is the parameterized equivalent.
-Once filament is inserted, `C5_LOAD_FILAMENT LENGTH=20` loads the currently
-attached tool. Specify a nozzle with `C5_LOAD_FILAMENT TOOL=2 TEMP=255
-LENGTH=20`, or several with `C5_LOAD_FILAMENT TOOLS=0,2 TEMP0=220 TEMP2=255
-LENGTH=20`. `TEMP` sets a common temperature (default 220 C); `TEMP0` through
-`TEMP3` override it per nozzle. Each requested tool is selected, heated,
+Once filament is inserted, `C5_LOAD_FILAMENT LENGTH=20` heats and loads the
+physically attached tool, including when invoked from a macro button without
+parameters. It requires a valid attached-tool sensor state matching the active
+extruder; it never selects a tool implicitly. `TEMP=...` overrides the loading
+temperature. Without `TEMP`, it reuses the attached heater's target if it is
+within 150–300 C, otherwise it uses 220 C. It sets that target and waits until
+the measured temperature reaches at least the target minus 2 C before feeding,
+even when cold extrusion is enabled. Measured room temperature is never used
+as the loading or cooldown operating temperature.
+
+Specify a nozzle with `C5_LOAD_FILAMENT TOOL=2 TEMP=255 LENGTH=20`, or several
+with `C5_LOAD_FILAMENT TOOLS=0,2 TEMP0=220 TEMP2=255 LENGTH=20`. With explicit
+tool selection, `TEMP` sets a common temperature (default 220 C); `TEMP0`
+through `TEMP3` override it per nozzle. Explicit loading temperatures must be
+finite and within 150–300 C. Each requested tool is selected, heated,
 has its calibrated automatic nozzle Z offset applied, purged up to 80 mm
 over the rear-right bucket, cooled at the wiper, turned
 off, and docked before proceeding to the next. Insert filament into every
@@ -486,9 +496,14 @@ requested tool before running the multi-tool command. If a requested tool is
 already mounted, it is handled first. A mounted tool not in the requested
 list must be safely cooled and docked first; the macro will not switch it
 automatically. Use the final purge only after AFC detects filament. During a
-paused print, the no-argument form feeds the attached tool in place; it does
-not travel to the bucket or dock across the part. Explicit tool selection
-requires an idle print.
+paused print, the no-tool-argument form heats and waits, then feeds the attached
+tool in place while preserving the paused G-code state. It does not select a
+tool, travel to the bucket, cool, or dock across the part. Explicit tool
+selection requires an idle print.
+
+The loader passes its chosen loading temperature to `C5_COOL_FOR_DOCK`, not
+the measured nozzle temperature. The existing cooldown calculation remains
+`max(0, HOTEND - 100)`; no change to the Klippy cooldown command is required.
 
 This implementation has been compiled and statically checked on the host.
 Physical sensor polarity, fixture height, four mount coordinates, and
