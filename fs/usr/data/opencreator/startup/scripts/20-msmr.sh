@@ -33,6 +33,8 @@ log_launcher "Launching WebUI..."
 
 while true; do
     if [ -x "$MPY" ]; then
+        [ -f /usr/data/opencreator/plugin-manager/oc-plugin ] &&
+            sh /usr/data/opencreator/plugin-manager/oc-plugin sync --only moonraker >> "$LAUNCHER_LOG" 2>&1
         log_launcher "Launching Moonraker..."
         rm -rf "$OC/tmp"/*
         TMPDIR="$OC/tmp" "$MPY" "$MOONRAKER/moonraker/moonraker.py" -d "$OC"

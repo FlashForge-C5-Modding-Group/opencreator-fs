@@ -17,8 +17,13 @@ if [ ! -s "$AFC_VARS" ]; then
     echo '{}' > "$AFC_VARS"
 fi
 
+PLUGINS=/usr/data/opencreator/plugin-manager/oc-plugin
+[ -d /opt/bin ] && [ -f "$PLUGINS" ] && ln -sf "$PLUGINS" /opt/bin/oc-plugin
+
 while true; do
     if [ -x "$KPY" ]; then
+        # Plugin modules and configs, redone before every start (Fluidd updates plugins with git pull)
+        [ -f "$PLUGINS" ] && sh "$PLUGINS" sync --only klipper >> "$LAUNCHER_LOG" 2>&1
         log_launcher "Klippy is starting..."
 
         "$KPY" "$OC/klipper/klippy/klippy.py" "$OC/config/printer.cfg" -l "$OC/logs/printer.log" -a /tmp/uds

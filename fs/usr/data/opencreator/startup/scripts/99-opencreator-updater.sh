@@ -324,7 +324,7 @@ sync_loopscript() {
     src=$CLONE/fs/usr/data
     ls_changed=0
     mkdir -p "$OCDIR/.installed"
-    for part in startup firmware tunneled moonraker fluidd; do
+    for part in startup firmware tunneled moonraker fluidd plugin-manager; do
         [ -d "$src/opencreator/$part" ] || continue
         part_current "$src/opencreator/$part" "$OCDIR/$part" && continue
         rm -rf "$OCDIR/$part.new" "$OCDIR/$part.old"
@@ -337,6 +337,7 @@ sync_loopscript() {
         case $part in
             startup) chmod 755 "$OCDIR/$part.new/startup.sh" "$OCDIR/$part.new"/scripts/*.sh ;;
             firmware) chmod 755 "$OCDIR/$part.new/firmwareExe" ;;
+            plugin-manager) chmod 755 "$OCDIR/$part.new/oc-plugin" ;;
             # Executable means tunnel mode; keep whichever mode is set.
             tunneled) if [ -x "$OCDIR/tunneled/tunneled.sh" ]; then mode=755; else mode=644; fi
                       chmod "$mode" "$OCDIR/$part.new/tunneled.sh" ;;

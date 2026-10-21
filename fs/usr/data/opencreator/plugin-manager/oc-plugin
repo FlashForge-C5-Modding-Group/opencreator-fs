@@ -1,0 +1,11 @@
+#!/bin/sh
+# OpenCreator plugin manager: oc-plugin list | install URL | update [ID] | remove ID | enable ID | disable ID | sync
+HERE=$(cd "$(dirname "$0")" && pwd)
+export PATH=$PATH:/opt/bin
+for py in /usr/data/python-hf/bin/python3 /usr/data/opencreator/klipper/klippy-env/bin/python python3; do
+    if command -v "$py" >/dev/null 2>&1; then
+        exec "$py" "$HERE/oc_plugin.py" "$@"
+    fi
+done
+echo "oc-plugin: no Python found" >&2
+exit 1
