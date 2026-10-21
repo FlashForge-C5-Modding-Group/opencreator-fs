@@ -252,6 +252,21 @@ merge_configs() {
             log "$name: CONFLICT -- publication failed; live/base require resolution"
         fi
     done
+    # printer.base.cfg gets the Pro-only hardware through printer.model.cfg,
+    # which 10-klipper.sh writes at boot; an update applied before the next
+    # boot would otherwise leave a Pro without it.
+    if [ -f "$CONFIG_DIR/printer.pro.cfg" ] && [ ! -f "$CONFIG_DIR/printer.model.cfg" ]; then
+        if sed -n 's/^[[:space:]]*MACHINE=\([A-Za-z0-9]*\).*/\1/p' /usr/prog/app_startup.sh 2>/dev/null |
+            head -n 1 | grep -qx Creator5; then
+            printf '# Written by the updater: Creator 5 (no chamber heater, chamber fans or aux fan)\n' \
+                >"$CONFIG_DIR/printer.model.cfg"
+        else
+            printf '# Written by the updater: Creator 5 Pro\n[include printer.pro.cfg]\n' \
+                >"$CONFIG_DIR/printer.model.cfg"
+        fi
+        log "printer.model.cfg: written"
+        CHANGED=1
+    fi
 }
 
 # Every config is safe before either marker is published. Record the migration

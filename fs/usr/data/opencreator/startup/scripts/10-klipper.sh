@@ -17,6 +17,25 @@ if [ ! -s "$AFC_VARS" ]; then
     echo '{}' > "$AFC_VARS"
 fi
 
+# printer.base.cfg gets the Pro-only hardware (chamber heater, chamber and aux
+# fans: printer.pro.cfg) through printer.model.cfg. The model is read from the
+# stock boot script, as the installer does.
+MODEL_CFG=$OC/config/printer.model.cfg
+MACHINE=$(sed -n 's/^[[:space:]]*MACHINE=\([A-Za-z0-9]*\).*/\1/p' \
+    /usr/prog/app_startup.sh /usr/prog/PROGRAM/runFirmwareExe.sh 2>/dev/null | head -n 1)
+case $MACHINE in
+    Creator5Pro) MODEL_TEXT='# Written at boot: Creator 5 Pro
+[include printer.pro.cfg]' ;;
+    Creator5) MODEL_TEXT='# Written at boot: Creator 5 (no chamber heater, chamber fans or aux fan)' ;;
+    *) MODEL_TEXT= ;;
+esac
+if [ -n "$MODEL_TEXT" ]; then
+    [ "$(cat "$MODEL_CFG" 2>/dev/null)" = "$MODEL_TEXT" ] || printf '%s\n' "$MODEL_TEXT" > "$MODEL_CFG"
+elif [ ! -f "$MODEL_CFG" ]; then
+    log_launcher "Printer model unknown; keeping the Creator 5 Pro hardware in the config"
+    printf '# Written at boot: model unknown, assumed Creator 5 Pro\n[include printer.pro.cfg]\n' > "$MODEL_CFG"
+fi
+
 PLUGINS=/usr/data/opencreator/plugin-manager/oc-plugin
 [ -d /opt/bin ] && [ -f "$PLUGINS" ] && ln -sf "$PLUGINS" /opt/bin/oc-plugin
 

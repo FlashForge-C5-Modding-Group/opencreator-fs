@@ -233,6 +233,16 @@ present in Kalico. This port fixes their incompatible probe call and
 the `REMOVE_PEEL` response handler. Keep the stock `[ff_eddy levelboard]`,
 `[e_stop X]`, `[e_stop Y]`, and `[e_stop Z]` sections in the printer config.
 
+`[ff_eddy]` only sends `trigger_threshold` to its board when Klippy
+connects. Its `GET_BASIC_PARAM_*`, `REMOVE_PEEL_*` and
+`SET_TRIGGER_THRESHOLD_*` commands are manual diagnostics; nothing in
+OpenCreator or the stock firmwareExe calls them. With Kalico's MCU firmware the
+configured values (eboard -20, levelboard 25) are already the firmware
+defaults, and the eboard replaces its threshold with one measured from sensor
+noise after each calibration. The sections are kept for printers still on
+FlashForge's MCU firmware, and because removing the module would stop
+existing configs that list them from loading.
+
 ## Extruder Rotation Calibration
 
 `C5_EXTRUDER_ROTATION_CALIBRATION` (or `C5_EXTRUDER_ROTATION_CALIBRATE`)
@@ -400,6 +410,10 @@ slicer's filament-flow ratio. Verify the entire X274–279/Y260 path is over the
 bucket before enabling this on the physical printer. This timing-equivalent
 bucket path still needs a hardware check; it is not the touchscreen's long
 straight-line XY path.
+
+The eboard check needs the extruder drivers in StealthChop
+(`stealthchop_threshold: 999999` on each `[tmc2209 extruder*]`); in
+SpreadCycle `SG_RESULT` stays near zero and no candidate ever passes.
 
 `PAUSE` saves the current print position and raises Z by up to 5 mm without
 moving XY toward the docked heads. `RESUME` delegates to Klipper's saved-state
