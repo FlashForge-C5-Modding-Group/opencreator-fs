@@ -70,10 +70,13 @@ any client that shows Klipper prompts can answer it.
 
 | Page | Text | Buttons | Effect |
 | --- | --- | --- | --- |
-| OpenCreator | Welcome to OpenCreator! We'll setup your Printer as you'd love! | Let's get started! | Next page |
+| OpenCreator | Welcome, and that all previous settings were imported (input shaper and PID from FlashForge's calibration, tool offsets, Z offsets and dock positions) | Let's get started! | Next page |
+| Pressure Advance Calibration | Run pressure advance calibration (flow calibration) at the start of every print? | No / Yes | Sets the `flow_calibration` switch |
+| Purging | Purge each tool into the bucket at the start of every print? | No / Yes | Sets the `purge` switch |
 | Clog Detection | Do you want Clog Detection enabled? | No / Yes | Sets the `clog_detection` switch |
 | Bed Heat Soak | Do you want bed heat soaking enabled? | No / Yes | Sets the `bed_soak` switch |
-| You're all set! | The Discord link, https://discord.gg/RsdkqDtfww | Finish | Closes the dialog |
+| Offsets and docking | Where the offsets come from, and the calibration commands if they're off | Next | Next page |
+| Thank you! | Thanks for using the first version of OpenCreator, Public Alpha Version 1, and the Discord link, https://discord.gg/RsdkqDtfww | Finish | Closes the dialog |
 
 **Clog Detection.** With it on, a tool's filament wheel (`fm_exN`) stopping
 while that tool is printing and its filament switch still sees filament
@@ -86,7 +89,7 @@ AFC either way.
 so the mesh is taken after the plate has finished warping. It only runs when
 the print makes a new mesh and the bed is heated.
 
-Both answers are the same switches shown under Fans & Outputs and set by
+The answers are the same switches shown under Fans & Outputs and set by
 `C5_MISC_BED_SOAK_ON`/`OFF` or `SET_PIN PIN=clog_detection VALUE=1`, so they
 can be changed at any time later. Like the other Misc switches, they are saved
 in `c5_misc_variables.cfg` and survive restarts.
@@ -110,7 +113,7 @@ Klipper's side instead:
 ### Running it again
 
 - `C5_FIRST_SETUP` opens the dialog at the welcome page. It only shows the
-  dialog; answering it changes the two switches again.
+  dialog; answering it changes those switches again.
 - To have it show on its own again, as on a fresh install, remove the
   `c5_first_setup_done` line from `c5_misc_variables.cfg` (or run
   `SAVE_VARIABLE VARIABLE=c5_first_setup_done VALUE=0`) and restart Klipper.
@@ -480,9 +483,22 @@ over or start loading new filament".
 - Closing the prompt leaves the print paused. `RESUME` or `CANCEL_PRINT` work
   as usual.
 
-The lengths are variables on `[gcode_macro C5_FILAMENT_RUNOUT]`. If AFC has an
-infinite-spool runout lane set for the tool, AFC switches automatically and no
-prompt appears.
+The lengths are variables on `[gcode_macro C5_FILAMENT_RUNOUT]`.
+
+**Infinite spool:** give a tool a backup in AFC (the lane's runout setting in
+Fluidd/Mainsail, or `SET_RUNOUT LANE=extruder RUNOUT=extruder2`). When that tool
+runs out, the print pauses and retracts the same way, then switches to the backup
+without asking: `C5_FILAMENT_RUNOUT TOOL=n TO=m` runs the same switch as the
+prompt's **Switch to Tm**. Later `Tn` commands in the file go to Tm (`SET_MAP`), and
+so do `M104`/`M109 Tn`. `C5_PRINT_STOP` resets the mapping. If the backup has no
+filament, the prompt appears instead. If the switch fails, the print stays paused
+and the prompt comes back.
+
+AFC calls all of this from the filament sensor's background callback. It first
+lets the print finish its current line and saves that position. Only then does it
+run `PAUSE` and `C5_FILAMENT_RUNOUT` as normal G-code, as Klipper's own runout
+handling does, so nothing else runs in the middle of the switch. `PAUSE` lifts the
+nozzle 5 mm before the head travels to the dock.
 
 For standalone loading, insert filament manually until AFC reports the
 toolhead sensor loaded. `C5_PREPARE_LOAD_T0` through `C5_PREPARE_LOAD_T3`
