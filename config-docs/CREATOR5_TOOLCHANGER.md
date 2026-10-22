@@ -440,10 +440,19 @@ Virtual SD runs `C5_PRINT_STOP` automatically at successful end-of-file when
 twice. Pauses, cancellations, and command errors do not take the normal EOF
 path; a failed stop macro marks the print as errored. Direct streamed G-code
 still needs to call the macro itself. `C5_PRINT_STOP` stops heating, turns off the
-part fan and chamber fans (`M107`, `M107 P2`, `M107 P3`), raises Z by up to 10 mm of available travel, calls `AFC_UNSELECT_TOOL`
-to park the current head when homed, and optionally lowers the bed to the
-physical Z maximum before disabling motors. The optional move only runs when
-Z is homed and uses machine coordinates, independent of nozzle Z offsets.
+part fan and chamber fans (`M107`, `M107 P2`, `M107 P3`), and raises Z by up to
+10 mm of available travel. When XYZ are homed, it checks the selected physical
+extruder's AFC `on_shuttle` status, which samples fresh mount sensors rather
+than cached Creator 5 UI status or AFC's loaded filament lane. A matched
+attached head uses `AFC_UNSELECT_TOOL` to preserve AFC bookkeeping. Otherwise
+it calls the safety coordinator's `C5_TOOL_DOCK` directly: an empty shuttle is
+a no-op, while a head mismatched with the selected extruder is docked using
+the physical sensors. Invalid mount sensors stop docking at command execution,
+after heater and fan shutdown, without allowing subsequent bed lowering or
+motor disabling. An empty shuttle never invokes the legacy `UNSELECT_TOOL`
+fallback. After successful docking/no-op, the macro optionally lowers the bed
+to the physical Z maximum before disabling motors. The optional move only runs
+when Z is homed and uses machine coordinates, independent of nozzle Z offsets.
 AFC's `custom_tool_swap` and `custom_unselect` entries route
 physical changes into the Klippy safety coordinator. AFC's
 `enable_standalone_purge` is disabled to avoid a second purge. The stock
