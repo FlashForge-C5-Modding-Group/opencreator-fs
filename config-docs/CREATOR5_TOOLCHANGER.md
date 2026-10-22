@@ -301,8 +301,16 @@ now invoke `C5_PRINT_START` automatically before the first file command.
 The start hook reads the first 64 KiB for the first nonzero `M104`/`M109`
 hotend and `M140`/`M190` bed temperatures and the first T0–T3 selection.
 It defaults to T0 and an unheated bed when those are absent, but refuses to
-print without a hotend temperature. A file that already contains
-`C5_PRINT_START` in its header runs that command instead, without duplication.
+print without a hotend temperature. The updated shared Kalico hook also
+passes the initial tool's `MATERIAL=` from Orca's semicolon-separated
+`; filament_type = ...` list in the startup prefix or last 64 KiB (trailer
+takes precedence), with no Orca edits. Missing or invalid metadata, including
+metadata outside those windows, passes `UNKNOWN` to use configured MPC
+defaults; this does not sense loaded filament. MPC must be enabled and
+calibrated; see [MPC hotend control](CREATOR5_MPC.md).
+A file with `C5_PRINT_START` in its header bypasses generated start and
+material commands completely; that explicit command owns `MATERIAL=` /
+`MATERIAL0=`–`MATERIAL3=`. It still runs without duplication.
 Use plain `.gcode`, not `.gcode.3mf`; direct streamed G-code does not use
 virtual SD and is outside this hook.
 
