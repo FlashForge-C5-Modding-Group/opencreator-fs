@@ -50,6 +50,42 @@ existing settings unchanged. To prepare two tools explicitly, for example:
 C5_PRINT_START TOOL=0 TOOLS=0,1 BED=60 HOTEND=220 MATERIAL0=PLA MATERIAL1=PETG
 ```
 
+## Material defaults
+
+The native and tunnel `_SET_MPC_MATERIAL` tables use density in **g/cm³**
+and specific heat capacity in **J/(g·K)**. The added defaults below use
+representative product densities, not universal values for each polymer.
+Generic `PA-CF` and `PA-GF` represent PA6 composites, not every nylon blend.
+`PCTG` is already supported in both tables; its existing defaults remain
+unchanged at density **1.27** and heat capacity **2.20**.
+
+**All ten additions use estimated heat capacities**, not manufacturer
+heat-capacity measurements: PPA, PPA-CF, PPA-GF, PA-CF, PA-GF, PA6-GF and
+PA12-CF use the existing PA-family upper-end value **2.50**; PET-CF, PET-GF
+and PETG-GF use the PETG-family value **2.20**. [Kalico's MPC guide](https://docs.kalico.gg/MPC.html)
+gives PA 2–2.5 and PETG 1.7–2.2 and recommends the base polymer's heat
+capacity for CF blends. Extending that approximation to GF, PPA/PA12 and
+PET here is our family estimate, not an upstream guarantee.
+
+Density sources for the additions:
+
+| Material | Density (g/cm³) | Representative source |
+| --- | --- | --- |
+| PPA | 1.21 | [Siraya Tech Fibreheart PPA](https://siraya.tech/pages/siraya-tech-fibreheart-ppa-filament-tds) |
+| PPA-CF | 1.22 | [Flashforge PPA-CF TDS](https://after-support.flashforge.jp/uploads/datasheet/tds/PPA_CF_TDS_EN.pdf), midpoint of 1.21–1.23 (10% CF) |
+| PPA-GF | 1.27 | [Siraya Tech Fibreheart PPA-GF](https://siraya.tech/pages/fibreheart-ppa-gf-tds) (15% GF) |
+| PET-CF | 1.29 | [Bambu Lab PET-CF TDS](https://wiki.bambulab.com/filament-acc/petcf-ppacf/07689de83afd4cc480f136c7697e6de3.pdf) |
+| PET-GF | 1.38 | [Raise3D Industrial PET-GF TDS](https://s1.raise3d.com/2023/03/Raise3D-Industrial-PET-GF_TDS_V1.pdf) (15% GF) |
+| PETG-GF | 1.30 | [SSSRAY PETG-GF TDS](https://sssray.com/wp-content/uploads/2026/05/PETG-GF-3D-Printing-Filament-Technical-Data-Sheet.pdf) |
+| PA-CF | 1.19 | Existing PA6-CF default from [Kalico's MPC table](https://docs.kalico.gg/MPC.html) |
+| PA-GF, PA6-GF | 1.20 | [Polymaker PolyMide PA6-GF TDS](https://cdn.polymaker.com.cn/wp-content/uploads/lana-downloads/PolyMide_PA6_GF_TDS_V5.1.pdf) |
+| PA12-CF | 1.03 | [Extrudr DuraPro PA12-CF TDS](https://s3.extrudr.com/extrudr-media/datasheets/tds/tds-en/durapro-pa12-cf-TDS-en.pdf) |
+
+These are starting defaults, not hardware-validated settings. Filler ratios
+and spool-specific properties vary; customize the table or use
+`MPC_SET HEATER=extruder FILAMENT_DENSITY=... FILAMENT_HEAT_CAPACITY=...`
+with known material data. Unknown-material fallback behavior is unchanged.
+
 ## Temperature waits
 
 MPC models block temperature; the sensor can remain a few degrees off target,
