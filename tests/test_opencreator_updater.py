@@ -201,5 +201,105 @@ class OverlayTest(unittest.TestCase):
         self.assertEqual(s.firmware_exe.read_bytes(), b"#!/bin/sh\nnew\n")
 
 
+@unittest.skipUnless(shutil.which("sh"), "needs sh")
+class McuSyncTest(unittest.TestCase):
+    """SocUpdater.sync_mcu with a stand-in oc-mcu-flash that logs what it was given."""
+
+    def setUp(self):
+        self.tmp = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.fw = self.tmp / "clone" / up.MCU_FIRMWARE_DIR
+        self.fw.mkdir(parents=True)
+        self.flasher = self.tmp / "oc" / "mcu-flash" / "oc-mcu-flash"
+        self.flasher.parent.mkdir(parents=True)
+        self.calls = self.tmp / "calls"
+        self.flash_result = "ok"
+        self.state, self.versions = "standby", {}
+        self.s = up.SocUpdater(config_dir=self.tmp / "config", clone=self.tmp / "clone",
+                               ocdir=self.tmp / "oc", log_path=self.tmp / "log")
+        self.s.api = self.api
+
+    def api(self, path, method="GET", body=None, timeout=10):
+        if "print_stats" in path:
+            return {"result": {"status": {"print_stats": {"state": self.state}}}}
+        if "mcu_version" in path:
+            return {"result": {"status": {mcu: {"mcu_version": self.versions.get(name)}
+                                          for name, mcu in up.MCU_BOARDS.items()}}}
+        return {}
+
+    def hexes(self, version=None, **files):
+        for name, data in files.items():
+            (self.fw / name).write_bytes(data)
+        sums = "".join("%s  %s\n" % (up.hashlib.sha256((self.fw / n).read_bytes()).hexdigest(), n)
+                       for n in sorted(up.MCU_BOARDS) if (self.fw / n).is_file())
+        (self.fw / "SHA256SUMS").write_text(sums)
+        if version:
+            (self.fw / "VERSION").write_text(version + "\n")
+
+    def set_flasher(self, ok=True):
+        names = {"eBoard.hex": "eboard", "heaterBoard.hex": "eheaterboard",
+                 "levelBoard.hex": "levelboard", "mainBoardGD.hex": "mainboard"}
+        lines = ["#!/bin/sh", 'ls "$1" | sort | tr "\n" " " >> "%s"; echo >> "%s"' % (self.calls, self.calls)]
+        for f, board in names.items():
+            lines.append('[ -f "$1/%s" ] && echo "%s: %s"' % (f, board, "flashed" if ok else "FAILED"))
+        lines.append("exit %d" % (0 if ok else 1))
+        self.flasher.write_text("\n".join(lines) + "\n")
+
+    def flashed_sets(self):
+        return self.calls.read_text().splitlines() if self.calls.exists() else []
+
+    def test_no_folder_does_nothing(self):
+        shutil.rmtree(self.fw)
+        self.set_flasher()
+        self.s.sync_mcu()
+        self.assertEqual(self.flashed_sets(), [])
+
+    def test_checksum_mismatch_never_flashes(self):
+        self.hexes(**{"eBoard.hex": b"e1"})
+        (self.fw / "eBoard.hex").write_bytes(b"tampered")
+        self.set_flasher()
+        self.s.sync_mcu()
+        self.assertEqual(self.flashed_sets(), [])
+
+    def test_boards_already_on_version_are_only_recorded(self):
+        self.hexes("abc", **{"eBoard.hex": b"e1", "mainBoardGD.hex": b"m1"})
+        self.versions = {"eBoard.hex": "abc", "mainBoardGD.hex": "old"}
+        self.set_flasher()
+        self.s.sync_mcu()
+        self.assertEqual(self.flashed_sets(), ["mainBoardGD.hex "])
+        self.s.sync_mcu()
+        self.assertEqual(len(self.flashed_sets()), 1)
+
+    def test_only_changed_boards_flash(self):
+        self.hexes(**{"eBoard.hex": b"e1", "levelBoard.hex": b"l1"})
+        self.set_flasher()
+        self.s.sync_mcu()
+        self.hexes(**{"levelBoard.hex": b"l2"})
+        self.s.sync_mcu()
+        self.assertEqual(self.flashed_sets(), ["eBoard.hex levelBoard.hex ", "levelBoard.hex "])
+
+    def test_failure_is_not_retried_until_the_files_change(self):
+        self.hexes(**{"heaterBoard.hex": b"h1"})
+        self.set_flasher(ok=False)
+        self.s.sync_mcu()
+        self.s.sync_mcu()
+        self.assertEqual(len(self.flashed_sets()), 1)
+        self.set_flasher()
+        self.hexes(**{"heaterBoard.hex": b"h2"})
+        self.s.sync_mcu()
+        self.assertEqual(len(self.flashed_sets()), 2)
+        self.assertFalse((self.s.state / "mcu-failed").exists())
+
+    def test_not_during_a_print(self):
+        self.hexes(**{"eBoard.hex": b"e1"})
+        self.set_flasher()
+        self.state = "printing"
+        self.s.sync_mcu()
+        self.assertEqual(self.flashed_sets(), [])
+        self.state = "standby"
+        self.s.sync_mcu()
+        self.assertEqual(self.flashed_sets(), ["eBoard.hex "])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -67,7 +67,7 @@ SBC, since installs from before the file existed had that hardware.
 The first run after install only notes the checkout's commit
 (`/usr/data/opencreator/.loopscript-commit`). Each later commit:
 
-- `startup`, `firmware`, `tunneled`, `moonraker`, `fluidd` and `plugin-manager` are
+- `startup`, `firmware`, `tunneled`, `moonraker`, `fluidd`, `plugin-manager` and `mcu-flash` are
   each copied next to the live folder and the new files laid over the copy. Files you
   added stay. A file an earlier version installed and the new one dropped is removed,
   unless you changed it. `/usr/data/opencreator/.installed/<folder>.md5` lists what was
@@ -79,6 +79,26 @@ The first run after install only notes the checkout's commit
 
 If the opencreator-fs checkout is missing (installs from before it was kept), the
 updater clones it, and Moonraker's update manager uses it from then on.
+
+## MCU firmware (SoC)
+
+Every minute the updater also compares `mcu-firmware/` in the checkout with what it last
+flashed, and updates the boards live with `oc-mcu-flash` (see `CREATOR5_LIVE_MCU_FLASH.md`)
+when they differ.
+
+- `mcu-firmware/` holds any of `eBoard.hex`, `heaterBoard.hex`, `levelBoard.hex` and
+  `mainBoardGD.hex`, plus `SHA256SUMS` (`sha256sum *.hex > SHA256SUMS`). If any listed file
+  doesn't match its sum, nothing is flashed. An optional `VERSION` holds the Kalico version
+  the boards report (`mcu_version`, e.g. `ab62660c7`).
+- A board is out of date when its file's sha256 differs from the one recorded after its last
+  successful flash (`.opencreator-updater/mcu-flashed.json` in the config folder). With
+  `VERSION`, a board already reporting it is only recorded, so a printer that is already
+  current isn't flashed again.
+- Only the out-of-date boards are flashed, never during a print.
+- A failed set of files is noted in `.opencreator-updater/mcu-failed`, reported in the
+  console and not retried until the files change. The eBoard and heaterBoard need firmware
+  with `c5_reset_bootloader` (flashed once from USB) before they can be updated live.
+- `soc --once` flashes too, unless given `--no-mcu`.
 
 ## Running it by hand
 
