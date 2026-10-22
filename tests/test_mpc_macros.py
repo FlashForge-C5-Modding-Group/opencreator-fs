@@ -173,7 +173,7 @@ class CalibrateTests(unittest.TestCase):
 
 class PrintStartMaterialTests(unittest.TestCase):
 
-    def start(self, params):
+    def commands(self, params):
         printer = {
             "output_pin flow_calibration": {"value": 0.},
             "output_pin purge": {"value": 0.},
@@ -184,7 +184,10 @@ class PrintStartMaterialTests(unittest.TestCase):
         for heater in ("extruder", "extruder1", "extruder2", "extruder3"):
             printer["filament_switch_sensor %s_tool_start" % heater] = {
                 "filament_detected": True}
-        return [line for line in render_print_start(printer, params)
+        return render_print_start(printer, params)
+
+    def start(self, params):
+        return [line for line in self.commands(params)
                 if line.startswith("_SET_MPC_MATERIAL")]
 
     def test_per_tool_materials(self):
@@ -193,6 +196,58 @@ class PrintStartMaterialTests(unittest.TestCase):
                         "MATERIAL": "PLA", "MATERIAL3": "PETG"}),
             ['_SET_MPC_MATERIAL TOOL=1 MATERIAL="PLA"',
              '_SET_MPC_MATERIAL TOOL=3 MATERIAL="PETG"'])
+
+    def test_all_tool_materials_do_not_expand_physical_preparation(self):
+        out = self.commands({
+            "TOOL": "0", "HOTEND": "220", "FLOW_CALIBRATION": "1", "PURGE": "1",
+            "MATERIAL0": "PLA", "MATERIAL1": "PETG",
+            "MATERIAL2": "ABS", "MATERIAL3": "UNKNOWN",
+        })
+        self.assertEqual(
+            [line for line in out if line.startswith("_SET_MPC_MATERIAL")],
+            ['_SET_MPC_MATERIAL TOOL=0 MATERIAL="PLA"',
+             '_SET_MPC_MATERIAL TOOL=1 MATERIAL="PETG"',
+             '_SET_MPC_MATERIAL TOOL=2 MATERIAL="ABS"',
+             '_SET_MPC_MATERIAL TOOL=3 MATERIAL="UNKNOWN"'])
+        self.assertEqual(
+            [line for line in out if line.startswith("SET_HEATER_TEMPERATURE")],
+            ["SET_HEATER_TEMPERATURE HEATER=extruder TARGET=100.0",
+             "SET_HEATER_TEMPERATURE HEATER=extruder TARGET=220.0",
+             "SET_HEATER_TEMPERATURE HEATER=extruder TARGET=220.0"])
+        self.assertEqual(
+            [line for line in out if line.startswith("AFC_SELECT_TOOL")],
+            ["AFC_SELECT_TOOL TOOL=extruder", "AFC_SELECT_TOOL TOOL=extruder"])
+        self.assertEqual(
+            [line for line in out if line.startswith("C5_AUTO_NOZZLE_Z")],
+            ["C5_AUTO_NOZZLE_Z T=0 HOTEND=220.0 BED=0.0 FIRST_LAYER_HEIGHT=0.2",
+             "C5_AUTO_NOZZLE_Z T=0 HOTEND=220.0 BED=0.0 FIRST_LAYER_HEIGHT=0.2"])
+        self.assertEqual(out.count("C5_FLOW_CALIBRATION"), 1)
+        self.assertEqual(out.count("C5_TOOL_PURGE"), 1)
+
+    def test_shared_material_only_updates_selected_tools(self):
+        self.assertEqual(
+            self.start({"TOOL": "1", "TOOLS": "1,3", "HOTEND": "220",
+                        "MATERIAL": "PLA"}),
+            ['_SET_MPC_MATERIAL TOOL=1 MATERIAL="PLA"',
+             '_SET_MPC_MATERIAL TOOL=3 MATERIAL="PLA"'])
+
+    def test_unselected_per_tool_material_overrides_shared_without_heating(self):
+        out = self.commands({"TOOL": "0", "HOTEND": "220",
+                             "MATERIAL": "PLA", "MATERIAL2": "PETG"})
+        self.assertEqual(
+            [line for line in out if line.startswith("_SET_MPC_MATERIAL")],
+            ['_SET_MPC_MATERIAL TOOL=0 MATERIAL="PLA"',
+             '_SET_MPC_MATERIAL TOOL=2 MATERIAL="PETG"'])
+        self.assertEqual(
+            [line for line in out if line.startswith("SET_HEATER_TEMPERATURE")],
+            ["SET_HEATER_TEMPERATURE HEATER=extruder TARGET=100.0",
+             "SET_HEATER_TEMPERATURE HEATER=extruder TARGET=220.0"])
+
+    def test_empty_per_tool_material_suppresses_shared_fallback(self):
+        self.assertEqual(
+            self.start({"TOOL": "0", "HOTEND": "220",
+                        "MATERIAL": "PLA", "MATERIAL0": " ", "MATERIAL2": ""}),
+            [])
 
     def test_no_material_no_call(self):
         self.assertEqual(self.start({"TOOL": "0", "HOTEND": "220"}), [])

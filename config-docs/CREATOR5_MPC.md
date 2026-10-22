@@ -24,23 +24,27 @@ and run `C5_PID_CALIBRATE`.
 
 ## Filament material from Orca
 
-No Orca start-G-code edits are needed for automatic virtual-SD start with
-updated shared Kalico: it passes `MATERIAL=` for **only the initial tool**.
-Enable and calibrate MPC first. An explicit `C5_PRINT_START` in the startup
-header bypasses automatic start and material injection completely.
+With updated Kalico **and** Creator 5 config macros, automatic virtual-SD
+startup sets MPC material properties for **all four tools**, including tools
+selected later in the print. No Orca start-G-code edits are needed. Enable
+and calibrate MPC first.
 
 The hook reads `; filament_type = PLA;PETG;...` in the bounded startup
-prefix or last 64 KiB; trailer metadata wins. T0–T3 index list slots 0–3.
-Missing, empty, malformed or unavailable slots, including metadata outside
-these windows, pass `MATERIAL=UNKNOWN`. Known materials use the macro's
-density/heat-capacity table; unknown materials use the heater's configured
-defaults (1.20 / 1.80 in the overlay). PID ignores material updates.
-This reads slicer metadata; it does not sense the filament actually loaded.
+prefix or last 64 KiB; trailer metadata wins. Slots 0–3 become
+`MATERIAL0=`–`MATERIAL3=`. Missing, empty or malformed slots become
+`UNKNOWN`, restoring that hotend's configured density/heat-capacity defaults
+(1.20 / 1.80 in the overlay). Known materials use the macro's table.
+PID ignores these updates. This reads slicer metadata, not loaded filament.
 
-An explicit start owns `MATERIAL=` (shared) or `MATERIAL0=`–`MATERIAL3=`
-(per tool). With no material arguments, it leaves material settings unchanged.
-Multi-tool preparation still requires explicit `TOOLS=` and appropriate
-materials; metadata slots do not select tools. For example:
+Material setup does **not** select, heat or purge extra tools. Automatic
+startup still prepares only the initial tool; `TOOL`/`TOOLS` control physical
+preparation independently of MPC material properties.
+
+An explicit `C5_PRINT_START` in the startup header bypasses all automatic
+start/material injection. Supply `MATERIAL=` for the tools in `TOOLS`, or
+`MATERIAL0=`–`MATERIAL3=` for individual tools regardless of `TOOLS`.
+Per-tool values override the shared value; no material arguments leave
+existing settings unchanged. To prepare two tools explicitly, for example:
 
 ```
 C5_PRINT_START TOOL=0 TOOLS=0,1 BED=60 HOTEND=220 MATERIAL0=PLA MATERIAL1=PETG

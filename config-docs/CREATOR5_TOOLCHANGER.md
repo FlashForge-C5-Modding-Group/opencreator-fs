@@ -302,12 +302,13 @@ The start hook reads the first 64 KiB for the first nonzero `M104`/`M109`
 hotend and `M140`/`M190` bed temperatures and the first T0–T3 selection.
 It defaults to T0 and an unheated bed when those are absent, but refuses to
 print without a hotend temperature. The updated shared Kalico hook also
-passes the initial tool's `MATERIAL=` from Orca's semicolon-separated
+passes `MATERIAL0=`–`MATERIAL3=` from Orca's semicolon-separated
 `; filament_type = ...` list in the startup prefix or last 64 KiB (trailer
-takes precedence), with no Orca edits. Missing or invalid metadata, including
-metadata outside those windows, passes `UNKNOWN` to use configured MPC
-defaults; this does not sense loaded filament. MPC must be enabled and
-calibrated; see [MPC hotend control](CREATOR5_MPC.md).
+takes precedence), with no Orca edits. Updated config macros apply these
+properties to all four hotends without selecting, heating or purging extra
+tools. Missing or invalid slots use configured MPC defaults, not settings
+from a previous print. This reads metadata, not loaded filament. MPC must
+be enabled and calibrated; see [MPC hotend control](CREATOR5_MPC.md).
 A file with `C5_PRINT_START` in its header bypasses generated start and
 material commands completely; that explicit command owns `MATERIAL=` /
 `MATERIAL0=`–`MATERIAL3=`. It still runs without duplication.
@@ -330,13 +331,13 @@ selects only the requested `TOOL` or listed `TOOLS` through `AFC_SELECT_TOOL`,
 heats each selected tool,
 optionally runs the `C5_FLOW_STROKES` bucket flow check, then runs
 `C5_TOOL_PURGE` at the configured bucket at X276.5/Y260 before cooldown at
-X266.5/Y13.8. Only prepared tools need filament and fitted nozzles. For a
-multi-tool job, pass an explicit list such as
+X266.5/Y13.8. Only prepared tools need filament and fitted nozzles. To
+prepare multiple tools at startup, pass an explicit list such as
 `C5_PRINT_START TOOL=3 TOOLS=1,3 BED=60 HOTEND=220`; the selected `TOOL`
 must be in `TOOLS`. By default each listed tool uses `HOTEND`; pass
 `HOTEND0` through `HOTEND3` when their materials need different temperatures.
-The automatic virtual-SD start prepares its detected initial tool only, so
-multi-tool slicer start G-code should specify `TOOLS` explicitly. Both
+Automatic virtual-SD startup physically prepares only the initial tool;
+its MPC material setup covers all four tools independently. Both
 bucket-bound moves approach
 through X250/Y250; cooldown leaves through that waypoint. The purge command checks that a
 tool is physically attached and its hotend permits extrusion, then activates
