@@ -6,6 +6,9 @@ case "$(ls /usr/prog/PROGRAM/kernel/ 2>/dev/null | head -n 1)" in
     2.0.7)
         busybox devmem 0x00B330D1 8 1
         ;;
+    2.0.8)
+        busybox devmem 0x00B030D1 8 1
+        ;;
     *)
         echo "Unknown kernel package; legacy NaN not enabled" >&2
         exit 1

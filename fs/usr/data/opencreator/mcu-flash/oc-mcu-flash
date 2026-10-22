@@ -1,0 +1,103 @@
+#!/bin/sh
+# Live MCU firmware update on the SoC, without a USB stick or power cycle.
+# Usage: oc-mcu-flash DIR   (DIR holds any of eBoard.hex heaterBoard.hex
+#                            levelBoard.hex mainBoardGD.hex)
+# See config-docs/CREATOR5_LIVE_MCU_FLASH.md.
+
+DIR=${1:-}
+LOG=/usr/data/logs/oc-mcu-flash.log
+MR=http://127.0.0.1:7125
+WORK=/tmp/oc-mcu-flash
+
+die() { echo "oc-mcu-flash: $*" >&2; exit 1; }
+say() { echo "$*"; echo "$(date '+%F %T') $*" >> "$LOG"; }
+
+[ -n "$DIR" ] && [ -d "$DIR" ] || die "usage: oc-mcu-flash DIR"
+DIR=$(cd "$DIR" && pwd)
+CONTROL=$(ls -d /usr/prog/PROGRAM/control/[0-9]* 2>/dev/null | sort | tail -n 1)
+IAP=$CONTROL/IAPCommand
+ISP=$CONTROL/ISPCommand
+[ -x "$IAP" ] && [ -x "$ISP" ] || die "no IAPCommand/ISPCommand in $CONTROL"
+
+# board: hex file, tty, Klipper mcu name
+IAP_BOARDS="eBoard.hex:/dev/ttyS5:eboard heaterBoard.hex:/dev/ttyS4:eheaterboard levelBoard.hex:/dev/ttyS7:levelboard"
+names=
+for b in $IAP_BOARDS; do
+    [ -f "$DIR/${b%%:*}" ] && names="$names${names:+,}${b##*:}"
+done
+[ -n "$names" ] || [ -f "$DIR/mainBoardGD.hex" ] || die "no .hex files in $DIR"
+
+state=$(curl -s -m 5 "$MR/printer/objects/query?print_stats=state" |
+        sed -n 's/.*"state": *"\([a-z]*\)".*/\1/p')
+case "$state" in
+    printing|paused) die "printer is $state" ;;
+esac
+
+pids_of() {
+    for d in /proc/[0-9]*; do
+        tr '\0' ' ' < "$d/cmdline" 2>/dev/null | grep -q "$1" &&
+            echo "${d#/proc/}"
+    done
+}
+
+WAKE=$(pids_of '08-mcu-wake')
+KLIPPY=
+resume() {
+    [ -n "$KLIPPY" ] && kill -KILL $KLIPPY 2>/dev/null
+    [ -n "$WAKE" ] && kill -CONT $WAKE 2>/dev/null
+}
+trap resume EXIT INT TERM HUP
+
+say "flashing from $DIR: ${names:-}${names:+ }$([ -f "$DIR/mainBoardGD.hex" ] && echo mainboard)"
+# The wake script would release the boards from their boot stage
+[ -n "$WAKE" ] && kill -STOP $WAKE
+if [ -n "$names" ]; then
+    r=$(curl -s -m 10 -X POST "$MR/printer/gcode/script?script=C5_MCU_BOOTLOADER%20BOARDS=$names")
+    case "$r" in
+        *'"result"'*) ;;
+        *) die "C5_MCU_BOOTLOADER failed: $(echo "$r" | sed -n 's/.*"message": *"\([^"]*\)".*/\1/p')" ;;
+    esac
+    sleep 2
+fi
+# Pause Klippy so it leaves the UARTs alone; it is restarted afterwards
+KLIPPY=$(pids_of 'klippy/klippy\.py')
+[ -n "$KLIPPY" ] && kill -STOP $KLIPPY
+
+rm -rf "$WORK"; mkdir -p "$WORK"; cd "$WORK" || die "no $WORK"
+failed=
+for b in $IAP_BOARDS; do
+    hex=${b%%:*}; rest=${b#*:}; tty=${rest%%:*}; name=${b##*:}
+    [ -f "$DIR/$hex" ] || continue
+    saved=$(stty -g -F "$tty")
+    ok=
+    for try in 1 2 3; do
+        "$IAP" "$DIR/$hex" "$tty" > "$WORK/$name.log" 2>&1
+        if grep -q "STM32Write: success" "$WORK/$name.log"; then ok=1; break; fi
+    done
+    stty -F "$tty" "$saved"
+    cat "$WORK/$name.log" >> "$LOG"
+    if [ -n "$ok" ]; then say "$name: flashed"; else say "$name: FAILED"; failed=1; fi
+done
+if [ -f "$DIR/mainBoardGD.hex" ]; then
+    saved=$(stty -g -F /dev/ttyS2)
+    "$ISP" "$DIR/mainBoardGD.hex" /dev/ttyS2 115200 > "$WORK/mcu.log" 2>&1
+    stty -F /dev/ttyS2 "$saved"
+    cat "$WORK/mcu.log" >> "$LOG"
+    if grep -q "finished successfully" "$WORK/mcu.log"; then
+        say "mainboard: flashed"
+    else
+        say "mainboard: FAILED"; failed=1
+    fi
+fi
+
+resume
+KLIPPY= WAKE=
+for i in $(seq 1 45); do
+    sleep 2
+    curl -s -m 5 "$MR/printer/info" | grep -q '"state": *"ready"' && break
+done
+curl -s -m 5 "$MR/printer/objects/query?mcu=mcu_version&mcu%20eboard=mcu_version&mcu%20eheaterboard=mcu_version&mcu%20levelboard=mcu_version" |
+    grep -o '"mcu[^"]*": *{"mcu_version": *"[^"]*"' | sed 's/{"mcu_version": *//; s/"//g' |
+    while IFS= read -r line; do say "$line"; done
+[ -z "$failed" ] || die "some boards failed; see $LOG"
+say "done"
