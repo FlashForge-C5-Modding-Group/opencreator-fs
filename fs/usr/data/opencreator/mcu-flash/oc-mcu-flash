@@ -72,7 +72,7 @@ for b in $IAP_BOARDS; do
     ok=
     for try in 1 2 3; do
         "$IAP" "$DIR/$hex" "$tty" > "$WORK/$name.log" 2>&1
-        if grep -q "STM32Write: success" "$WORK/$name.log"; then ok=1; break; fi
+        if grep -qE "STM32Write: success|sendFileSuccessful" "$WORK/$name.log"; then ok=1; break; fi
     done
     stty -F "$tty" "$saved"
     cat "$WORK/$name.log" >> "$LOG"
