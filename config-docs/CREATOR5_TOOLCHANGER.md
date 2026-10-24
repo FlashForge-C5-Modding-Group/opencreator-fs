@@ -328,6 +328,10 @@ properties to all four hotends without selecting, heating or purging extra
 tools. Missing or invalid slots use configured MPC defaults, not settings
 from a previous print. This reads metadata, not loaded filament. MPC must
 be enabled and calibrated; see [MPC hotend control](CREATOR5_MPC.md).
+It also passes `USED_TOOLS=` (slots with filament used in Orca's
+`; filament used [mm]`) and `IDLE0=`–`IDLE3=` (nonzero `; idle_temperature`
+slots). Before the first tool waits for its print temperature, every other
+tool in `TOOLS` or `USED_TOOLS` is set to its `IDLEn`, or 100 °C without one.
 A file with `C5_PRINT_START` in its header bypasses generated start and
 material commands completely; that explicit command owns `MATERIAL=` /
 `MATERIAL0=`–`MATERIAL3=`. It still runs without duplication.

@@ -281,7 +281,7 @@ class PrintStartPreheatTests(unittest.TestCase):
             "TEMPERATURE_WAIT SENSOR=extruder1 MINIMUM=98.0",
             "TEMPERATURE_WAIT SENSOR=extruder3 MINIMUM=88.0"])
 
-    def test_other_tools_wait_at_half_temperature(self):
+    def test_other_tools_wait_at_idle_temperature_or_100(self):
         printer = {
             "output_pin flow_calibration": {"value": 0.},
             "output_pin purge": {"value": 0.},
@@ -292,13 +292,31 @@ class PrintStartPreheatTests(unittest.TestCase):
         for heater in ("extruder", "extruder1", "extruder2", "extruder3"):
             printer["filament_switch_sensor %s_tool_start" % heater] = {
                 "filament_detected": True}
+        # T0 from TOOLS, T2 and T3 only from the slicer's used tools; the
+        # first tool (T1) is not set to idle.
         out = render_print_start(printer, {
-            "TOOL": "1", "TOOLS": "0,1,3", "HOTEND": "220", "HOTEND3": "250"})
+            "TOOL": "1", "TOOLS": "0,1", "HOTEND": "220",
+            "USED_TOOLS": "1,3,2", "IDLE0": "150", "IDLE1": "160", "IDLE3": "170"})
         park = out.index("SMART_PARK")
-        self.assertEqual(out[park + 1:park + 4], [
-            "SET_HEATER_TEMPERATURE HEATER=extruder TARGET=110.0",
-            "SET_HEATER_TEMPERATURE HEATER=extruder3 TARGET=125.0",
+        self.assertEqual(out[park + 1:park + 5], [
+            "SET_HEATER_TEMPERATURE HEATER=extruder TARGET=150.0",
+            "SET_HEATER_TEMPERATURE HEATER=extruder2 TARGET=100.0",
+            "SET_HEATER_TEMPERATURE HEATER=extruder3 TARGET=170.0",
             "SET_HEATER_TEMPERATURE HEATER=extruder1 TARGET=220.0"])
+
+    def test_single_tool_print_sets_no_idle_temperature(self):
+        printer = {
+            "output_pin flow_calibration": {"value": 0.},
+            "output_pin purge": {"value": 0.},
+            "output_pin bed_leveling": {"value": 0.},
+            "bed_mesh": {"profiles": {}},
+            "creator5_toolchanger": {"build_plate_detected": True},
+            "filament_switch_sensor extruder_tool_start": {"filament_detected": True},
+        }
+        out = render_print_start(printer, {"TOOL": "0", "HOTEND": "220",
+                                           "USED_TOOLS": "0", "IDLE0": "150"})
+        park = out.index("SMART_PARK")
+        self.assertEqual(out[park + 1], "SET_HEATER_TEMPERATURE HEATER=extruder TARGET=220.0")
 
 
 class PrintStartPlateCheckTests(unittest.TestCase):
