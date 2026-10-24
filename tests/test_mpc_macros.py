@@ -304,6 +304,23 @@ class PrintStartPreheatTests(unittest.TestCase):
             "SET_HEATER_TEMPERATURE HEATER=extruder3 TARGET=170.0",
             "SET_HEATER_TEMPERATURE HEATER=extruder1 TARGET=220.0"])
 
+    def test_unused_tools_get_no_idle_or_fallback_temperature(self):
+        printer = {
+            "output_pin flow_calibration": {"value": 0.},
+            "output_pin purge": {"value": 0.},
+            "output_pin bed_leveling": {"value": 0.},
+            "bed_mesh": {"profiles": {}},
+            "creator5_toolchanger": {"build_plate_detected": True},
+            "filament_switch_sensor extruder_tool_start": {"filament_detected": True},
+        }
+        out = render_print_start(printer, {"TOOL": "0", "HOTEND": "220",
+                                           "USED_TOOLS": "0,1", "IDLE2": "150"})
+        park = out.index("SMART_PARK")
+        self.assertEqual(out[park + 1:park + 3], [
+            "SET_HEATER_TEMPERATURE HEATER=extruder1 TARGET=100.0",
+            "SET_HEATER_TEMPERATURE HEATER=extruder TARGET=220.0"])
+        self.assertFalse(any("extruder2" in line or "extruder3" in line for line in out))
+
     def test_single_tool_print_sets_no_idle_temperature(self):
         printer = {
             "output_pin flow_calibration": {"value": 0.},

@@ -311,6 +311,35 @@ class McuSyncTest(unittest.TestCase):
         self.assertEqual(len(self.flashed_sets()), 2)
         self.assertFalse((self.s.state / "mcu-failed").exists())
 
+    def stock_tools(self):
+        control = self.tmp / "control" / "2.0.8"
+        control.mkdir(parents=True)
+        for tool in ("IAPCommand", "ISPCommand"):
+            (control / tool).write_text("#!/bin/sh\n")
+        self.s.control = control.parent
+
+    def test_failed_boards_are_staged_for_startup(self):
+        self.hexes(**{"eBoard.hex": b"e1", "heaterBoard.hex": b"h1"})
+        self.flasher.write_text('#!/bin/sh\necho "eboard: flashed"\necho "eheaterboard: FAILED"\nexit 1\n')
+        self.stock_tools()
+        self.s.sync_mcu()
+        pending = self.tmp / "oc" / "mcu-flash-pending"
+        self.assertEqual(sorted(p.name for p in pending.iterdir()),
+                         ["IAPCommand", "ISPCommand", "SHA256SUMS", "flash.sh", "heaterBoard.hex"])
+        self.assertIn("heaterBoard.hex", (pending / "SHA256SUMS").read_text())
+        self.assertIn("mcu-flash-pending", (pending / "flash.sh").read_text())
+
+    def test_installer_pending_flash_is_left_alone(self):
+        self.hexes(**{"eBoard.hex": b"e1"})
+        self.set_flasher(ok=False)
+        self.stock_tools()
+        pending = self.tmp / "oc" / "mcu-flash-pending"
+        pending.mkdir(parents=True)
+        (pending / "flash.sh").write_text("installer\n")
+        self.s.sync_mcu()
+        self.assertEqual((pending / "flash.sh").read_text(), "installer\n")
+        self.assertFalse((pending / "eBoard.hex").exists())
+
     def test_not_during_a_print(self):
         self.hexes(**{"eBoard.hex": b"e1"})
         self.set_flasher()
