@@ -153,6 +153,19 @@ class UpdaterTest(unittest.TestCase):
         self.run_merge()
         self.assertEqual(stat.S_IMODE(self.live().stat().st_mode), 0o640)
 
+    def test_conflicted_commit_restarts_once(self):
+        self.commit(p=V1)
+        s = up.SocUpdater(config_dir=self.config, clone=self.repo, ocdir=self.tmp / "oc",
+                          log_path=self.tmp / "log", model_detect=None)
+        restarts = []
+        s.restart_klipper = restarts.append
+        self.assertTrue(s.apply(loopscript=False))
+        self.live().write_bytes(V1.replace(b"y: 1", b"y: 9"))
+        self.commit(p=V2)
+        self.assertFalse(s.apply(loopscript=False))
+        self.assertFalse(s.apply(loopscript=False))
+        self.assertEqual(restarts, [[], ["p.cfg"]])
+
     def test_model_file(self):
         self.commit(p=V1, **{"printer.pro": b"[heater_generic chamber_heater]\n"})
         self.run_merge(self.updater(model_detect=lambda: "Creator5"))

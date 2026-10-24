@@ -96,9 +96,14 @@ when they differ.
   `VERSION`, a board already reporting it is only recorded, so a printer that is already
   current isn't flashed again.
 - Only the out-of-date boards are flashed, never during a print.
-- A failed set of files is noted in `.opencreator-updater/mcu-failed`, reported in the
-  console and not retried until the files change. The eBoard and heaterBoard need firmware
-  with `c5_reset_bootloader` (flashed once from USB) before they can be updated live.
+- Nothing is flashed when the rest of that update failed (no checkout, a config conflict,
+  an error), until an update goes through.
+- A live flash is tried once. A failed set of files is noted in
+  `.opencreator-updater/mcu-failed`, reported in the console and not retried live until the
+  files change. The boards that failed are staged in `/usr/data/opencreator/mcu-flash-pending/`
+  with the stock `IAPCommand`/`ISPCommand`, and `startup.sh` flashes them at the next
+  power-on, before the boards are woken, for up to 3 boots
+  (`/usr/data/logs/oc-mcu-flash-pending.log`). A pending flash the installer left is kept.
 - `soc --once` flashes too, unless given `--no-mcu`.
 
 ## Running it by hand

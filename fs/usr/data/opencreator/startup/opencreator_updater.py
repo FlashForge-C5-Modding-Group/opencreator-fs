@@ -155,6 +155,7 @@ class Updater:
         self.out = out
         self._history = None      # (repo path, complete?) once looked up this run
         self._work = None
+        self._restarted_for = None  # a conflicted commit is re-merged every minute
 
     # ---- plumbing -------------------------------------------------------------
     def log(self, msg):
@@ -556,11 +557,12 @@ class SocUpdater(Updater):
             return True
         self.log("applying opencreator-fs %s" % head)
         try:
-            _, conflicts = self.merge_configs(self.repo / self.template_rel)
+            changed, conflicts = self.merge_configs(self.repo / self.template_rel)
             self.record_success(conflicts, head)
         finally:
             self.cleanup()
-        if restart:
+        if restart and (changed or self._restarted_for != head):
+            self._restarted_for = head
             self.restart_klipper(conflicts)
         return not conflicts
 
