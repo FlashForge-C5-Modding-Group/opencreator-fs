@@ -166,6 +166,21 @@ class UpdaterTest(unittest.TestCase):
         self.assertFalse(s.apply(loopscript=False))
         self.assertEqual(restarts, [[], ["p.cfg"]])
 
+    def test_conflict_not_retried_until_configs_change(self):
+        self.commit(p=V1)
+        s = up.SocUpdater(config_dir=self.config, clone=self.repo, ocdir=self.tmp / "oc",
+                          log_path=self.tmp / "log", model_detect=None)
+        self.assertTrue(s.apply(restart=False, loopscript=False))
+        self.live().write_bytes(V1.replace(b"y: 1", b"y: 9"))
+        self.commit(p=V2)
+        self.assertFalse(s.apply(restart=False, loopscript=False))
+        self.assertFalse(s.apply(restart=False, loopscript=False))
+        log = (self.tmp / "log").read_text()
+        self.assertEqual(log.count("applying"), 2)
+        self.live().write_bytes(V2)
+        self.assertTrue(s.apply(restart=False, loopscript=False))
+        self.assertEqual((self.tmp / "log").read_text().count("applying"), 3)
+
     def test_model_file(self):
         self.commit(p=V1, **{"printer.pro": b"[heater_generic chamber_heater]\n"})
         self.run_merge(self.updater(model_detect=lambda: "Creator5"))

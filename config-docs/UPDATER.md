@@ -51,7 +51,13 @@ temporary full clone. Without an exact match, it doesn't guess: the file is a
 conflict, and nothing is touched.
 
 A run counts as applied (`.opencreator-updater/applied-commit`) only when every
-config merged. A conflict leaves it unapplied, so the next check tries again.
+config merged. A conflict leaves it unapplied. It's tried again when a config
+changes (resolved by hand) or a new commit comes in, not every check; a failed
+history lookup (no network yet at boot) is retried at the next check.
+
+To keep a live file exactly as it is when it has no baseline, copy the template
+from the checkout over its base, `.opencreator-updater/base/<file>`. Later updates
+merge onto it from there.
 
 **Migration** (`.opencreator-updater/merge-version`, now 2): some earlier installs
 saved bases that weren't really what the live file came from. Once per version
