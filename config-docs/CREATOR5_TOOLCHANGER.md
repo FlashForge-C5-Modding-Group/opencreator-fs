@@ -294,6 +294,23 @@ the measured length is outside 70–130 % of the requested length (slipping,
 a wrong mark, or a wrong `wheel_mm_per_pulse`). Each logical extruder keeps
 its own `rotation_distance`, so tools can differ.
 
+## Toolchange counter
+
+Every completed pickup adds one to `toolchanges.txt` in the config directory
+(next to `printer.cfg`), with a total and a count per head:
+
+```text
+Total: 3
+T0: 1
+T1: 0
+T2: 2
+T3: 0
+```
+
+Selecting a head that is already attached doesn't count. Set
+`toolchange_count_path` in `[creator5_toolchanger]` to keep it elsewhere.
+Edit or delete the file to reset it; it's re-read when Klipper restarts.
+
 ## Printing and AFC
 
 Virtual-SD jobs started through Moonraker/Mainsail or `SDCARD_PRINT_FILE`

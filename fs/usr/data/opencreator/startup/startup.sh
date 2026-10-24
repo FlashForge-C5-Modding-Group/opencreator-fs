@@ -16,6 +16,13 @@ if [ ! -d "$TARGET_DIR" ]; then
     exit 1
 fi
 
+# MCU firmware the installer left for this power-on, before anything wakes the boards
+PENDING=/usr/data/opencreator/mcu-flash-pending/flash.sh
+if [ -f "$PENDING" ]; then
+    log_launcher "Flashing pending MCU firmware"
+    sh "$PENDING" > /tmp/mcu-flash-pending.log 2>&1 || true
+fi
+
 for script in $(ls "$TARGET_DIR"/*.sh 2>/dev/null | sort); do
     if [ -f "$script" ]; then
 
