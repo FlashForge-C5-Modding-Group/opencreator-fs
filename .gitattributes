@@ -1,0 +1,2 @@
+# Flashed as built (CRLF); SHA256SUMS covers the exact bytes
+mcu-firmware/*.hex -text
