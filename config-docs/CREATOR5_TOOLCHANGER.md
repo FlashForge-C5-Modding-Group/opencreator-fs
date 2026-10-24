@@ -556,6 +556,12 @@ the measured temperature reaches at least the target minus 2 C before feeding,
 even when cold extrusion is enabled. Measured room temperature is never used
 as the loading or cooldown operating temperature.
 
+AFC's "load lane" button sends `CHANGE_TOOL LANE=extruderN`. Outside a print, a
+`CHANGE_TOOL` macro (in `printer.afc-standalone.cfg`) runs
+`C5_LOAD_FILAMENT TOOL=N` instead, with `NEW_EXTRUDER_TEMP` as `TEMP` and
+`PURGE_LENGTH` as `LENGTH` when given. During a print, it's AFC's own tool change
+(`_AFC_CHANGE_TOOL`).
+
 Specify a nozzle with `C5_LOAD_FILAMENT TOOL=2 TEMP=255 LENGTH=20`, or several
 with `C5_LOAD_FILAMENT TOOLS=0,2 TEMP0=220 TEMP2=255 LENGTH=20`. With explicit
 tool selection, `TEMP` sets a common temperature (default 220 C); `TEMP0`
