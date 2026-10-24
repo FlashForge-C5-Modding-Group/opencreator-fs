@@ -216,7 +216,7 @@ class OverlayTest(unittest.TestCase):
 
 @unittest.skipUnless(shutil.which("sh"), "needs sh")
 class RestartTest(unittest.TestCase):
-    """restart_klipper always asks Moonraker for a Klipper service restart."""
+    """restart_klipper only logs for now; Klipper is restarted by hand."""
 
     def setUp(self):
         self.tmp = pathlib.Path(tempfile.mkdtemp())
@@ -226,13 +226,14 @@ class RestartTest(unittest.TestCase):
         self.u.printing = lambda: False
         self.u.api = lambda path, method="GET", body=None, timeout=10: self.calls.append((path, method))
 
-    def test_restarts_the_service(self):
+    def test_does_not_restart(self):
         self.u.restart_klipper([])
-        self.assertEqual(self.calls, [("/machine/services/restart?service=klipper", "POST")])
+        self.assertEqual(self.calls, [])
+        self.assertIn("restart Klipper to load it", (self.tmp / "log").read_text())
 
-    def test_restarts_even_with_conflicts(self):
+    def test_logs_conflicts(self):
         self.u.restart_klipper(["printer.cfg"])
-        self.assertEqual(self.calls, [("/machine/services/restart?service=klipper", "POST")])
+        self.assertEqual(self.calls, [])
         self.assertIn("CONFLICTS in: printer.cfg", (self.tmp / "log").read_text())
 
 

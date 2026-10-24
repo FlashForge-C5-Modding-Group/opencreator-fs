@@ -356,13 +356,15 @@ class Updater:
         # files are left as they were, so they still load.
         if conflicts:
             self.log("CONFLICTS in: %s -- resolve by hand, then restart Klipper" % " ".join(conflicts))
-        while self.printing():
-            time.sleep(60)
-        try:
-            self.api("/machine/services/restart?service=klipper", "POST")
-            self.log("klipper service restart requested via Moonraker")
-        except Exception as e:
-            self.log("klipper restart request failed (%s); restart it yourself" % e)
+        self.log("update applied; restart Klipper to load it")
+        # Klipper is not restarted automatically for now.
+        # while self.printing():
+        #     time.sleep(60)
+        # try:
+        #     self.api("/machine/services/restart?service=klipper", "POST")
+        #     self.log("klipper service restart requested via Moonraker")
+        # except Exception as e:
+        #     self.log("klipper restart request failed (%s); restart it yourself" % e)
 
     def cleanup(self):
         if self._work:
