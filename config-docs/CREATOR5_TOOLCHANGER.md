@@ -369,7 +369,8 @@ and runtime G-code offsets. Partial Z results are not kept if XY probing fails.
 Fluidd's Fans & Outputs panel shows the virtual output pins **flow_calibration**,
 **purge**, **bed_leveling**, **bed_soak**, **clog_detection**,
 **lower_bed_on_end**, **quiet_mode**, **startup_tune**, and
-**print_start_tune** controls as on/off switches. They do not drive physical
+**print_start_tune** controls as on/off switches (plus **chamber_heat_fan_full** on the Pro,
+which keeps the chamber heater fan at full speed instead of slowing it near the chamber target). They do not drive physical
 MCU pins. Flow and purge start on by default
 (`flow_calibration_default` and `purge_default` in `printer.creator5.cfg`)
 and control the next print. Turning purge off skips preparation
