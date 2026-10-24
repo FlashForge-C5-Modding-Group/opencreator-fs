@@ -213,6 +213,7 @@ class PrintStartMaterialTests(unittest.TestCase):
             [line for line in out if line.startswith("SET_HEATER_TEMPERATURE")],
             ["SET_HEATER_TEMPERATURE HEATER=extruder TARGET=100.0",
              "SET_HEATER_TEMPERATURE HEATER=extruder TARGET=220.0",
+             "SET_HEATER_TEMPERATURE HEATER=extruder TARGET=100.0",
              "SET_HEATER_TEMPERATURE HEATER=extruder TARGET=220.0"])
         self.assertEqual(
             [line for line in out if line.startswith("AFC_SELECT_TOOL")],
@@ -241,6 +242,7 @@ class PrintStartMaterialTests(unittest.TestCase):
         self.assertEqual(
             [line for line in out if line.startswith("SET_HEATER_TEMPERATURE")],
             ["SET_HEATER_TEMPERATURE HEATER=extruder TARGET=100.0",
+             "SET_HEATER_TEMPERATURE HEATER=extruder TARGET=100.0",
              "SET_HEATER_TEMPERATURE HEATER=extruder TARGET=220.0"])
 
     def test_empty_per_tool_material_suppresses_shared_fallback(self):
@@ -251,6 +253,52 @@ class PrintStartMaterialTests(unittest.TestCase):
 
     def test_no_material_no_call(self):
         self.assertEqual(self.start({"TOOL": "0", "HOTEND": "220"}), [])
+
+
+class PrintStartPreheatTests(unittest.TestCase):
+
+    def test_preheats_before_homing_and_waits_before_meshing(self):
+        printer = {
+            "output_pin flow_calibration": {"value": 0.},
+            "output_pin purge": {"value": 0.},
+            "output_pin bed_leveling": {"value": 1.},
+            "bed_mesh": {"profiles": {}},
+            "creator5_toolchanger": {"build_plate_detected": True},
+        }
+        for heater in ("extruder", "extruder1", "extruder2", "extruder3"):
+            printer["filament_switch_sensor %s_tool_start" % heater] = {
+                "filament_detected": True}
+        out = render_print_start(printer, {
+            "TOOL": "1", "TOOLS": "1,3", "HOTEND": "220", "HOTEND3": "90"})
+        home = out.index("C5_HOME_FOR_PRINT")
+        mesh = out.index("BED_MESH_CALIBRATE ADAPTIVE=1")
+        self.assertEqual(out[home - 2:home], [
+            "SET_HEATER_TEMPERATURE HEATER=extruder1 TARGET=100.0",
+            "SET_HEATER_TEMPERATURE HEATER=extruder3 TARGET=90.0"])
+        waits = [line for line in out[home:mesh]
+                 if line.startswith("TEMPERATURE_WAIT SENSOR=extruder")]
+        self.assertEqual(waits, [
+            "TEMPERATURE_WAIT SENSOR=extruder1 MINIMUM=98.0",
+            "TEMPERATURE_WAIT SENSOR=extruder3 MINIMUM=88.0"])
+
+    def test_other_tools_wait_at_half_temperature(self):
+        printer = {
+            "output_pin flow_calibration": {"value": 0.},
+            "output_pin purge": {"value": 0.},
+            "output_pin bed_leveling": {"value": 0.},
+            "bed_mesh": {"profiles": {}},
+            "creator5_toolchanger": {"build_plate_detected": True},
+        }
+        for heater in ("extruder", "extruder1", "extruder2", "extruder3"):
+            printer["filament_switch_sensor %s_tool_start" % heater] = {
+                "filament_detected": True}
+        out = render_print_start(printer, {
+            "TOOL": "1", "TOOLS": "0,1,3", "HOTEND": "220", "HOTEND3": "250"})
+        park = out.index("SMART_PARK")
+        self.assertEqual(out[park + 1:park + 4], [
+            "SET_HEATER_TEMPERATURE HEATER=extruder TARGET=110.0",
+            "SET_HEATER_TEMPERATURE HEATER=extruder3 TARGET=125.0",
+            "SET_HEATER_TEMPERATURE HEATER=extruder1 TARGET=220.0"])
 
 
 class PrintStartPlateCheckTests(unittest.TestCase):
