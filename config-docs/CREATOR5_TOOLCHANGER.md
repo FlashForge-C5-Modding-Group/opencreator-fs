@@ -152,8 +152,10 @@ After homing XYZ, parking every head, cooling the toolheads, and raising Z
 above `safe_z`, run `EXTRUDER_POSITION_CALIBRATE T=0` (or T1–T3). The port
 releases the X/Y motors for manual alignment, waits up to 30 seconds for the
 selected holder and grab sensors, pauses five seconds for you to release your
-hand, measures X/Y with `[hd_home X]` and `[hd_home Y]`,
-rehomes XY to discard the temporary measurement frame, then re-docks at the
+hand, measures X/Y with `[hd_home X]` and `[hd_home Y]`
+(travelling at 200 mm/s to 10 mm short of where the saved holder position puts
+each endstop, or `max_mount_correction` + 5 mm if that is wider, and measuring
+slowly only from there), rehomes XY to discard the temporary measurement frame, then re-docks at the
 measured coordinates and verifies
 the head, then updates **only** that tool's `x_check_pos*` and `y_check_pos*`
 fields in `extruder.json`. It creates a timestamped backup first. A timeout,
