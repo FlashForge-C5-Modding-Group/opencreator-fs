@@ -25,8 +25,9 @@ merges the template's changes into your live config. It keeps:
 | Also | Updates OpenCreator's own folders (startup scripts, firmwareExe launcher, Moonraker components, Fluidd layout, plugin manager, nginx snippets) | Pulls Klipper (`OC_UPDATER_KLIPPER_DIR`) |
 | Log | `/tmp/opencreator-updater.log` | the service's journal (`journalctl -u opencreator-updater`) |
 
-Afterwards it restarts Klipper, but only once nothing is printing or paused, and
-only if something changed and nothing conflicted.
+After every update it restarts the Klipper service, once nothing is printing or
+paused, so new Klipper code is loaded as well as new configs. It restarts even if
+a file conflicted, since conflicted files are left as they were.
 
 ## How a config is merged
 

@@ -202,6 +202,27 @@ class OverlayTest(unittest.TestCase):
 
 
 @unittest.skipUnless(shutil.which("sh"), "needs sh")
+class RestartTest(unittest.TestCase):
+    """restart_klipper always asks Moonraker for a Klipper service restart."""
+
+    def setUp(self):
+        self.tmp = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.calls = []
+        self.u = up.Updater(self.tmp / "config", self.tmp / "repo", REL, log_path=self.tmp / "log")
+        self.u.printing = lambda: False
+        self.u.api = lambda path, method="GET", body=None, timeout=10: self.calls.append((path, method))
+
+    def test_restarts_the_service(self):
+        self.u.restart_klipper([])
+        self.assertEqual(self.calls, [("/machine/services/restart?service=klipper", "POST")])
+
+    def test_restarts_even_with_conflicts(self):
+        self.u.restart_klipper(["printer.cfg"])
+        self.assertEqual(self.calls, [("/machine/services/restart?service=klipper", "POST")])
+        self.assertIn("CONFLICTS in: printer.cfg", (self.tmp / "log").read_text())
+
+
 class McuSyncTest(unittest.TestCase):
     """SocUpdater.sync_mcu with a stand-in oc-mcu-flash that logs what it was given."""
 
