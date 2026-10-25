@@ -36,6 +36,11 @@ elif [ ! -f "$MODEL_CFG" ]; then
     printf '# Written at boot: model unknown, assumed Creator 5 Pro\n[include printer.pro.cfg]\n' > "$MODEL_CFG"
 fi
 
+# Klippy ahead of the camera, screen and web services (see
+# config-docs/CREATOR5_CPU_PRIORITY.md)
+NICE=
+nice -n -20 true 2>/dev/null && NICE="nice -n -20"
+
 PLUGINS=/usr/data/opencreator/plugin-manager/oc-plugin
 [ -d /opt/bin ] && [ -f "$PLUGINS" ] && ln -sf "$PLUGINS" /opt/bin/oc-plugin
 
@@ -45,7 +50,7 @@ while true; do
         [ -f "$PLUGINS" ] && sh "$PLUGINS" sync --only klipper >> "$LAUNCHER_LOG" 2>&1
         log_launcher "Klippy is starting..."
 
-        "$KPY" "$OC/klipper/klippy/klippy.py" "$OC/config/printer.cfg" -l "$OC/logs/printer.log" -a /tmp/uds
+        $NICE "$KPY" "$OC/klipper/klippy/klippy.py" "$OC/config/printer.cfg" -l "$OC/logs/printer.log" -a /tmp/uds
 
         log_launcher "Klippy exited; see $OC/logs/printer.log. Restarting in 3 s."
         log_launcher "ERR CODE 0 - Klippy"

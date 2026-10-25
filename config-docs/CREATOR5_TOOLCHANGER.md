@@ -332,6 +332,9 @@ It also passes `USED_TOOLS=` (slots with filament used in Orca's
 `; filament used [mm]`) and `IDLE0=`–`IDLE3=` (nonzero `; idle_temperature`
 slots). Before the first tool waits for its print temperature, every other
 tool in `TOOLS` or `USED_TOOLS` is set to its `IDLEn`, or 100 °C without one.
+At most two of them heat up at once, since more would draw too much power: with
+three idle tools, the first two heat and reach their idle temperature before the
+third starts.
 A file with `C5_PRINT_START` in its header bypasses generated start and
 material commands completely; that explicit command owns `MATERIAL=` /
 `MATERIAL0=`–`MATERIAL3=`. It still runs without duplication.

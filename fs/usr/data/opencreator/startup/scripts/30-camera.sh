@@ -10,6 +10,10 @@ export LD_LIBRARY_PATH=/usr/prog/mjpg-streamer
 
 # id=value: white balance auto off, white balance 4800K (auto comes out
 # blue, 5500K and up orange), saturation 100, contrast 33, hue -20
+# Below Klippy (see config-docs/CREATOR5_CPU_PRIORITY.md)
+NICE=
+nice -n 10 true 2>/dev/null && NICE="nice -n 10"
+
 CONTROLS="9963788=0 9963802=4800 9963778=100 9963777=33 9963779=-20"
 
 # Sent once mjpg_streamer answers, and again until the camera reports every
@@ -42,7 +46,7 @@ apply_controls() {
   # relaunch if mjpg_streamer ever exits
   while true; do
     apply_controls &
-    ./mjpg_streamer \
+    $NICE ./mjpg_streamer \
       -i "input_uvc.so -d /dev/video0 -r 1280x720 -f 30" \
       -o "output_http.so -p 8080 -w www" \
       >/usr/data/logs/mjpg.log 2>&1
