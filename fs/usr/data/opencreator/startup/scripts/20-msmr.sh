@@ -28,6 +28,12 @@ done
 [ -e "$OC/gcodes" ] || [ -L "$OC/gcodes" ] || ln -s /usr/data/gcodes "$OC/gcodes"
 mkdir -p "$OC/tmp"
 
+# The stock site gives the API location 600 s; large uploads and copies need
+# more (see /usr/data/nginx/conf.d/creator5-timeouts.conf).
+SITE=/usr/data/nginx/sites-available/mainsail
+grep -q 'proxy_read_timeout 600;' "$SITE" 2>/dev/null &&
+    sed -i 's/proxy_read_timeout 600;/proxy_read_timeout 3600;/' "$SITE"
+
 log_launcher "Launching WebUI..."
 /usr/prog/nginx/sbin/nginx -p /usr/prog/nginx -c /usr/prog/nginx/conf/nginx.conf
 
