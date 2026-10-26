@@ -33,6 +33,13 @@ mkdir -p "$OC/tmp"
 SITE=/usr/data/nginx/sites-available/mainsail
 grep -q 'proxy_read_timeout 600;' "$SITE" 2>/dev/null &&
     sed -i 's/proxy_read_timeout 600;/proxy_read_timeout 3600;/' "$SITE"
+# Cameras: nginx redirects to mjpg-streamer's own port instead of relaying
+# every frame (see config-docs/CREATOR5_CPU_PRIORITY.md). This nginx has no
+# rewrite module: the redirect is the 404 of a root that doesn't exist.
+for n in 1 2 3 4; do
+    grep -q "proxy_pass http://mjpgstreamer$n/;" "$SITE" 2>/dev/null &&
+        sed -i "s#proxy_pass http://mjpgstreamer$n/;#root /nonexistent; error_page 403 404 =302 http://\$host:$((8079 + n))/\$is_args\$args;#" "$SITE"
+done
 
 log_launcher "Launching WebUI..."
 /usr/prog/nginx/sbin/nginx -p /usr/prog/nginx -c /usr/prog/nginx/conf/nginx.conf
