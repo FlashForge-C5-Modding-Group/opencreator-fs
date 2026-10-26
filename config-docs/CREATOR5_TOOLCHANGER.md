@@ -89,6 +89,12 @@ AFC either way.
 so the mesh is taken after the plate has finished warping. It only runs when
 the print makes a new mesh and the bed is heated.
 
+**Bed mesh docks the tool first.** The probe is on the carriage, so
+`BED_MESH_CALIBRATE` (wrapped in `printer.mesh.cfg`; Klipper's own command is
+`_OC_BED_MESH_CALIBRATE`) docks an attached tool with `AFC_UNSELECT_TOOL`
+before probing, wherever the mesh is started from. It refuses to mesh while
+the tool sensors report an error.
+
 The answers are the same switches shown under Fans & Outputs and set by
 `C5_MISC_BED_SOAK_ON`/`OFF` or `SET_PIN PIN=clog_detection VALUE=1`, so they
 can be changed at any time later. Like the other Misc switches, they are saved
