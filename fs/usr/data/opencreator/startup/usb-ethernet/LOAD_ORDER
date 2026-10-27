@@ -1,0 +1,8 @@
+mii.ko
+r8152.ko
+usbnet.ko
+asix.ko
+ax88179_178a.ko
+cdc_ether.ko
+cdc_ncm.ko
+rndis_host.ko
