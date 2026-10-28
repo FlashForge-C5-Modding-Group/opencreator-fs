@@ -35,7 +35,10 @@ milliseconds of competing load (camera streaming, screen capture) was enough.
   `error_page 403 404 =302 …` on a root that doesn't exist. mjpg-streamer sends
   `Access-Control-Allow-Origin: *`, so Fluidd's adaptive mode (which fetches
   snapshots) works across the port. Existing camera URLs (`/webcam/...`) need
-  no change. Tunnel installs are not affected.
+  no change. A site with no `/webcam` location at all (new installs) gets a
+  `/webcam/` redirect to port 8080 added inside its first `server` block, so
+  the default camera in `moonraker.conf` works. Tunnel installs are not
+  affected.
 
 `nice` doesn't reach kernel network work (the camera's streaming traffic), so
 the Kalico change is the actual fix; the priorities only take userspace load

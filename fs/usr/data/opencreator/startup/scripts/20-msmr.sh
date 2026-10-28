@@ -40,6 +40,19 @@ for n in 1 2 3 4; do
     grep -q "proxy_pass http://mjpgstreamer$n/;" "$SITE" 2>/dev/null &&
         sed -i "s#proxy_pass http://mjpgstreamer$n/;#root /nonexistent; error_page 403 404 =302 http://\$host:$((8079 + n))/\$is_args\$args;#" "$SITE"
 done
+# Sites without a camera location (new installs) get the same redirect for
+# the default camera, so the relative /webcam/ URL in moonraker.conf works.
+if [ -f "$SITE" ] && ! grep -q 'location /webcam' "$SITE"; then
+    awk '
+        !done && /^[[:space:]]*server[[:space:]]*\{/ {
+            print
+            print "    location /webcam/ { root /nonexistent; error_page 403 404 =302 http://$host:8080/$is_args$args; }"
+            done = 1
+            next
+        }
+        { print }
+    ' "$SITE" > "$SITE.tmp" && mv "$SITE.tmp" "$SITE"
+fi
 
 log_launcher "Launching WebUI..."
 /usr/prog/nginx/sbin/nginx -p /usr/prog/nginx -c /usr/prog/nginx/conf/nginx.conf
