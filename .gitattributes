@@ -1,2 +1,5 @@
 # Flashed as built (CRLF); SHA256SUMS covers the exact bytes
 mcu-firmware/*.hex -text
+
+# Kernel modules: loaded as built, SHA256SUMS covers the exact bytes
+fs/usr/data/opencreator/startup/usb-ethernet/*.ko binary

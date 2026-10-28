@@ -181,6 +181,27 @@ stores raw T0 to T3 measurements; G-code offsets are relative to T0, with
 the separate `zoffset.json` per-tool adjustment added to Z. Run
 `SAVE_CONFIG` after reviewing staged values.
 
+**Baby stepping is kept.** Every baby step (Fluidd's or Mainsail's, any
+`SET_GCODE_OFFSET Z_ADJUST=`) is written straight to the attached tool's
+`zoffset.json` adjustment (`z_offset_t1`–`z_offset_t4`, the same value the
+stock touchscreen sets), so the next print, and the same tool after a
+toolchange, start from it. The toolchanger remembers the Z offset it set for
+the attached tool (at pickup and in `C5_AUTO_NOZZLE_Z`); the difference is
+the baby stepping. Docking during a print, print end and cancel
+(`C5_SAVE_BABYSTEP` in `C5_PRINT_STOP` and `CANCEL_PRINT`) also save, to
+catch Z changes made some other way. A change larger than 1 mm isn't
+treated as baby stepping and isn't saved, and a failed save only prints a
+message, never stops the print. `persist_babystep: False` in
+`[creator5_toolchanger]` turns it off (`C5_SAVE_BABYSTEP FORCE=1` still
+saves). Baby steps don't back up `zoffset.json`. The dock, print-end and
+`C5_SAVE_BABYSTEP` saves do, as the touchscreen save does.
+
+`LIST_BABYSTEP` (`C5_LIST_BABYSTEP`) shows the saved adjustment for each tool,
+and `CLEAR_BABYSTEP TOOL=1` (`C5_CLEAR_BABYSTEP T=1`) resets it to 0. Leave
+`TOOL` out, or pass `ALL`, for all four. Clearing the attached tool also takes
+the adjustment off its current Z offset. This is the same value the
+touchscreen's Z offset sets, so clearing it clears that too.
+
 For `TOOL=ALL`, the stock touchscreen's ordinary calibration pin is also
 used before any tool is picked up. The bare carriage's `[probe]` on
 `eboard:PG0` measures X43/Y226 and the cylinder location from `test.json`
@@ -411,6 +432,11 @@ enabled (otherwise loads a saved `default` mesh if present), probes the bed
 center, picks the head back up, prints a purge line, and enters the file.
 Each nozzle is cooled before docking; the requested print nozzle is reheated
 before the final purge line.
+The final heat-up waits parked at X265 Y20 Z2.5 (`_OC_PRINT_PARK`, variables
+`x`, `y`, `z` and `pullback_x`). That spot can only be reached through X256:
+the head pulls back to X256, then moves to Y20, then to X265. When the print
+starts, `_OC_PRINT_UNPARK` raises it 1 mm and moves it out to X256 before the
+file's first move.
 Before either low-Z purge, `C5_AUTO_NOZZLE_Z` applies the measured
 tool-to-station nozzle clearance and `C5_VERIFY_NOZZLE_Z` rejects a missing
 or reset offset. The stock firmware uses `SET_GCODE_OFFSET ... MOVE=1`; the
@@ -595,3 +621,23 @@ the measured nozzle temperature. The existing cooldown calculation remains
 This implementation has been compiled and statically checked on the host.
 Physical sensor polarity, fixture height, four mount coordinates, and
 pickup/release timing must be verified on the printer before unattended use.
+
+## Pause
+
+`PAUSE` (`mainsail.cfg`) only raises Z; it never moves X/Y, so it can't run
+into the docked heads, and `RESUME` comes straight back down. It lives in
+`mainsail.cfg`, which `printer.cfg` includes after `printer.base.cfg`, so it
+replaces any `PAUSE`/`RESUME` defined earlier. AFC
+wraps it (`AFC_PAUSE` raises by its `z_hop` first), which doesn't move X/Y
+either.
+
+Fluidd's and Mainsail's client macros (`fluidd.cfg` / `client.cfg`, which a
+tunnel install links into the config folder) define their own `PAUSE`. If one
+is included after `mainsail.cfg` (or comes from a plugin), it replaces this one, and by default it
+parks at the back-right corner in a single diagonal move, through the dock
+row: with a head docked at T3 it hits it, and with T3 removed the attached
+head hits the corner. `mainsail.cfg` therefore sets the client
+macros' park position (`_CLIENT_VARIABLE`) to the front of the bed, X125 Y10
+with a 5 mm lift, so their pause and `RESUME` only move over the bed. A
+`_CLIENT_VARIABLE` written in `printer.cfg` itself still overrides it; keep
+any custom park position on the bed (X below about 250), not near the docks.
