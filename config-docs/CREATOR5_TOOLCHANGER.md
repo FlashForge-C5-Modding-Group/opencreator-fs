@@ -401,7 +401,7 @@ Failed reference or nozzle calibration restores the previous measurements
 and runtime G-code offsets. Partial Z results are not kept if XY probing fails.
 
 Fluidd's Fans & Outputs panel shows the virtual output pins **flow_calibration**,
-**purge**, **bed_leveling**, **bed_soak**, **clog_detection**,
+**purge**, **purge_line**, **bed_leveling**, **bed_soak**, **clog_detection**,
 **lower_bed_on_end**, **quiet_mode**, **startup_tune**, and
 **print_start_tune** controls as on/off switches (plus **chamber_heat_fan_full** on the Pro,
 which keeps the chamber heater fan at 90% (`fan_speed`) instead of slowing it near the chamber target). They do not drive physical
@@ -409,7 +409,10 @@ MCU pins. Flow and purge start on by default
 (`flow_calibration_default` and `purge_default` in `printer.creator5.cfg`)
 and control the next print. Turning purge off skips preparation
 purges; if flow calibration is also off, the used-tool preparation loop is
-skipped entirely. Flow calibration remains independent and still extrudes its
+skipped entirely. The purge line in front of the print has its own switch,
+**purge_line** (default on, `purge_line_default`), toggled with
+`C5_MISC_PURGE_LINE_ON`/`C5_MISC_PURGE_LINE_OFF` or per job with
+`C5_PRINT_START ... PURGE_LINE=0`. Flow calibration remains independent and still extrudes its
 measurement strokes when enabled. Explicit manual `C5_TOOL_PURGE` and
 `C5_PURGE_LINE` commands are unaffected. The previous
 `C5_MISC_FLOW_ON`/`C5_MISC_FLOW_OFF` commands remain available for scripts,
@@ -429,7 +432,16 @@ the tool IDs in `TOOLS` (or just `TOOL` when `TOOLS` is omitted), optionally
 checking each selected tool's flow over the bucket,
 and docks each after cooldown. It then probes a fresh bed mesh if leveling is
 enabled (otherwise loads a saved `default` mesh if present), probes the bed
-center, picks the head back up, prints a purge line, and enters the file.
+center, picks the head back up, prints a purge line (when **purge_line** is
+on), and enters the file.
+
+On a Creator 5 Pro (a printer with `[heater_generic chamber_heater]`), the
+chamber heater is switched on together with the bed when `C5_PRINT_START` gets
+`CHAMBER=` (capped at the heater's `max_temp`). It does not wait for the
+chamber. The automatic virtual-SD start passes `CHAMBER=` from the first
+`M141`/`M191 S` above zero in the file's start, otherwise from Orca's
+`; chamber_temperature` for the used slots that have
+`; activate_chamber_temp_control` on.
 Each nozzle is cooled before docking; the requested print nozzle is reheated
 before the final purge line.
 The final heat-up waits parked at X265 Y20 Z2.5 (`_OC_PRINT_PARK`, variables

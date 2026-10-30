@@ -255,6 +255,82 @@ class PrintStartMaterialTests(unittest.TestCase):
         self.assertEqual(self.start({"TOOL": "0", "HOTEND": "220"}), [])
 
 
+class PrintStartChamberTests(unittest.TestCase):
+
+    def commands(self, params, pro=True):
+        printer = {
+            "output_pin flow_calibration": {"value": 0.},
+            "output_pin purge": {"value": 0.},
+            "output_pin bed_leveling": {"value": 0.},
+            "bed_mesh": {"profiles": {}},
+            "creator5_toolchanger": {"build_plate_detected": True},
+            "configfile": {"settings": {}},
+        }
+        if pro:
+            printer["heater_generic chamber_heater"] = {}
+            printer["configfile"]["settings"]["heater_generic chamber_heater"] = {
+                "max_temp": 65.}
+        for heater in ("extruder", "extruder1", "extruder2", "extruder3"):
+            printer["filament_switch_sensor %s_tool_start" % heater] = {
+                "filament_detected": True}
+        return render_print_start(printer, params)
+
+    def chamber(self, out):
+        return [line for line in out if "chamber_heater" in line]
+
+    def test_pro_heats_chamber_with_the_bed_without_waiting(self):
+        out = self.commands({"TOOL": "0", "HOTEND": "260", "BED": "100",
+                             "CHAMBER": "60"})
+        self.assertEqual(self.chamber(out),
+                         ["SET_HEATER_TEMPERATURE HEATER=chamber_heater TARGET=60.0"])
+        bed = out.index("M140 S100.0")
+        self.assertEqual(out[bed + 1],
+                         "SET_HEATER_TEMPERATURE HEATER=chamber_heater TARGET=60.0")
+
+    def test_chamber_target_is_capped_at_max_temp(self):
+        out = self.commands({"TOOL": "0", "HOTEND": "260", "CHAMBER": "80"})
+        self.assertEqual(self.chamber(out),
+                         ["SET_HEATER_TEMPERATURE HEATER=chamber_heater TARGET=65.0"])
+
+    def test_no_chamber_heater_or_no_target_leaves_it_alone(self):
+        self.assertEqual(self.chamber(self.commands(
+            {"TOOL": "0", "HOTEND": "260", "CHAMBER": "60"}, pro=False)), [])
+        self.assertEqual(self.chamber(self.commands(
+            {"TOOL": "0", "HOTEND": "220"})), [])
+
+
+class PrintStartPurgeLineTests(unittest.TestCase):
+
+    def lines(self, purge, purge_line, params=None):
+        printer = {
+            "output_pin flow_calibration": {"value": 0.},
+            "output_pin purge": {"value": purge},
+            "output_pin bed_leveling": {"value": 0.},
+            "bed_mesh": {"profiles": {}},
+            "creator5_toolchanger": {"build_plate_detected": True},
+        }
+        if purge_line is not None:
+            printer["output_pin purge_line"] = {"value": purge_line}
+        for heater in ("extruder", "extruder1", "extruder2", "extruder3"):
+            printer["filament_switch_sensor %s_tool_start" % heater] = {
+                "filament_detected": True}
+        start = {"TOOL": "0", "HOTEND": "220"}
+        start.update(params or {})
+        return render_print_start(printer, start).count("LINE_PURGE")
+
+    def test_purge_line_has_its_own_switch(self):
+        self.assertEqual(self.lines(purge=0., purge_line=1.), 1)
+        self.assertEqual(self.lines(purge=1., purge_line=0.), 0)
+
+    def test_param_overrides_switch(self):
+        self.assertEqual(self.lines(0., 1., {"PURGE_LINE": "0"}), 0)
+        self.assertEqual(self.lines(0., 0., {"PURGE_LINE": "1"}), 1)
+
+    def test_without_the_switch_follows_purge(self):
+        self.assertEqual(self.lines(purge=1., purge_line=None), 1)
+        self.assertEqual(self.lines(purge=0., purge_line=None), 0)
+
+
 class PrintStartPreheatTests(unittest.TestCase):
 
     def test_preheats_before_homing_and_waits_before_meshing(self):
