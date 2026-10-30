@@ -548,6 +548,15 @@ The Klipper fork also omits AFC's buffer, button, hub, tip-forming, poop, and
 HTLF hardware modules. They are not loaded by this standalone profile. Restore
 the modules before configuring feeder hardware that needs them.
 
+## Nozzle Z during a print
+
+Print start runs `C5_PRINT_Z_PLAN`, which keeps each used tool's thermal Z
+correction for that print. A tool picked up mid-print gets its calibrated offset
+plus that correction, the same value `C5_AUTO_NOZZLE_Z` gives it. Selecting the
+tool that is already attached keeps its current Z, including baby stepping. A
+print that resumes after a Klipper restart has no plan, so later pickups use the
+calibrated offset without the correction.
+
 ## Filament runout and loading
 
 Each AFC toolhead sensor has `enable_tool_runout: True` and
@@ -558,19 +567,20 @@ pause. AFC's toolhead-sensor runout behavior and debounce setting are
 documented in the [AFC hardware config](https://www.afcproject.dev/configuration/AFC_Hardware.cfg.html).
 
 After that pause, `C5_FILAMENT_RUNOUT` (`printer.filament.cfg`) retracts the
-remaining filament (`retract_length`, default 100 mm at 10 mm/s) and opens a
-Fluidd/Mainsail prompt: "Filament has run out of Tn, would you like to switch
-over or start loading new filament".
+remaining filament (`retract_length`, default 100 mm at 10 mm/s), moves the tool
+to the purge bucket and opens a Fluidd/Mainsail prompt.
 
+- **Load:** insert new filament until it stops, then press **Load**. Tn reheats,
+  purges `load_length` (default 120 mm) at `load_speed` (default 8 mm/s), and
+  the print resumes where it paused. A purge during a pause keeps the print's
+  Z offset and only checks it is in the safe 0.5 to 5 mm range, since a
+  toolchange or a re-select clears the automatic nozzle Z baseline.
 - **Switch to Tm** appears for every other tool whose sensor detects filament.
   `C5_RUNOUT_SWITCH` heats Tm to Tn's print temperature, swaps heads, maps Tn's
   slicer tool to Tm, returns to the paused position with Tm's offsets, resumes,
   and turns Tn's heater off.
-- **Load new filament** reheats Tn and moves it to the purge bucket. Insert
-  filament until it stops and press **Load**: Tn purges `load_length` (default
-  80 mm), and the print resumes where it paused.
-- Closing the prompt leaves the print paused. `RESUME` or `CANCEL_PRINT` work
-  as usual.
+- Closing the prompt leaves the print paused.
+  `RESUME` or `CANCEL_PRINT` work as usual.
 
 The lengths are variables on `[gcode_macro C5_FILAMENT_RUNOUT]`.
 

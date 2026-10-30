@@ -275,6 +275,17 @@ class PrintStartChamberTests(unittest.TestCase):
                 "filament_detected": True}
         return render_print_start(printer, params)
 
+    def test_print_z_plan_runs_before_any_tool_is_selected(self):
+        out = self.commands({"TOOL": "1", "BED": "100", "HOTEND": "240",
+                             "FIRST_LAYER_HEIGHT": "0.1"})
+        plan = [i for i, line in enumerate(out) if "C5_PRINT_Z_PLAN" in line]
+        select = [i for i, line in enumerate(out) if "AFC_SELECT_TOOL" in line]
+        self.assertEqual(len(plan), 1)
+        self.assertLess(plan[0], select[0])
+        self.assertIn("HOTEND1=240.0", out[plan[0]])
+        self.assertIn("BED=100.0", out[plan[0]])
+        self.assertIn("FIRST_LAYER_HEIGHT=0.1", out[plan[0]])
+
     def chamber(self, out):
         return [line for line in out if "chamber_heater" in line]
 

@@ -150,7 +150,7 @@ class PrintStartMappingTests(unittest.TestCase):
 def render_runout(name, tool, sensors, temp=220):
     printer = {
         "gcode_macro C5_FILAMENT_RUNOUT": {
-            "tool": tool, "temp": temp, "load_length": 80,
+            "tool": tool, "temp": temp, "load_length": 120, "load_speed": 8,
         },
         "extruder": {"target": 215.},
         "extruder1": {"target": 216.},
@@ -160,6 +160,38 @@ def render_runout(name, tool, sensors, temp=220):
     printer.update(sensors)
     return macro_template(FILAMENT_CONFIG, name).render(
         printer=printer, params={})
+
+
+class RunoutWaitTests(unittest.TestCase):
+    def render_runout_macro(self, params):
+        return macro_template(FILAMENT_CONFIG, "C5_FILAMENT_RUNOUT").render(
+            printer={"extruder1": {"target": 220., "can_extrude": True}},
+            params=params, retract_length=100, retract_speed=10)
+
+    def test_runout_without_backup_waits_at_the_bucket(self):
+        output = self.render_runout_macro({"TOOL": "1"})
+        self.assertLess(output.index("G1 E-100"),
+                        output.index("C5_MOVE_TO_PURGE_BUCKET"))
+        self.assertLess(output.index("C5_MOVE_TO_PURGE_BUCKET"),
+                        output.index("_OC_RUNOUT_PROMPT"))
+
+    def test_runout_with_backup_goes_straight_to_the_switch(self):
+        output = self.render_runout_macro({"TOOL": "1", "TO": "2"})
+        self.assertIn("_OC_RUNOUT_SWITCH TO=2", output)
+        self.assertNotIn("C5_MOVE_TO_PURGE_BUCKET", output)
+
+    def test_prompt_loads_only_from_the_button(self):
+        output = render_runout("_OC_RUNOUT_PROMPT", 1, {})
+        self.assertIn("Load|_OC_RUNOUT_LOAD_CONTINUE|primary", output)
+        self.assertNotIn("C5_TOOL_PURGE", output)
+
+    def test_load_purges_at_the_load_speed_then_resumes(self):
+        output = render_runout("_OC_RUNOUT_LOAD_CONTINUE", 1, {
+            "filament_switch_sensor extruder1_tool_start": {
+                "filament_detected": True},
+        })
+        self.assertIn("C5_TOOL_PURGE LENGTH=120 SPEED=8", output)
+        self.assertLess(output.index("C5_TOOL_PURGE"), output.index("RESUME"))
 
 
 class RunoutFilamentTests(unittest.TestCase):
@@ -198,7 +230,7 @@ class RunoutFilamentTests(unittest.TestCase):
                         output)
                     self.assertIn(
                         "TEMPERATURE_WAIT SENSOR=extruder MINIMUM=218", output)
-                    self.assertIn("C5_TOOL_PURGE LENGTH=80", output)
+                    self.assertIn("C5_TOOL_PURGE LENGTH=120 SPEED=8", output)
                     self.assertIn("RESUME", output)
                     self.assertNotIn("HEATER=extruder0", output)
                     self.assertNotIn("SENSOR=extruder0", output)
