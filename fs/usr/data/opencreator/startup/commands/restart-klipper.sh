@@ -1,5 +1,9 @@
 #!/bin/sh
 # 10-klipper.sh starts Klipper again
-pids=$(ps w | awk '/klippy\.py/ && !/awk/ {print $1}')
-[ -n "$pids" ] || exit 1
-kill $pids
+status=1
+for dir in /proc/[0-9]*; do
+    if grep -q klippy.py "$dir/cmdline" 2>/dev/null; then
+        kill "${dir#/proc/}" && status=0
+    fi
+done
+exit $status
