@@ -23,7 +23,7 @@ milliseconds of competing load (camera streaming, screen capture) was enough.
   first steps go out no later than 0.7 s ahead, the same window the background
   flush uses; the remaining moves follow through the normal flush.
 - **`10-klipper.sh`**: Klippy runs at `nice -20`, the highest normal priority. A real-time class (`chrt`) is not used: Klippy can take a full core during bursts and would starve SSH, Moonraker and the screen.
-- **`30-camera.sh`**: mjpg_streamer runs at `nice 10`.
+- **`30-camera.sh`**: mjpg_streamer, or ustreamer when `camera.conf` selects it, runs at `nice 10`. ustreamer is downloaded to `/usr/data/opencreator/camera/` the first time it's chosen, from a release pinned with its SHA-256 in the script. It's built by `c5/build.sh` on the `creator5` branch of [FlashForge-C5-Modding-Group/ustreamer](https://github.com/FlashForge-C5-Modding-Group/ustreamer) (static, Ingenic toolchain).
 
 - **Cameras (`20-msmr.sh`)**: nginx no longer relays webcam frames. Relaying
   a 720p/30 fps MJPEG stream cost nginx about 20% of the CPU, plus the
