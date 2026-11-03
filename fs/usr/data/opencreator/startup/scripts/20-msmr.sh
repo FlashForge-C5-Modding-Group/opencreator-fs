@@ -19,6 +19,9 @@ log_launcher() {
     echo "$1" >> "$LAUNCHER_LOG"
 }
 
+REPO=/usr/data/opencreator/startup/moonraker-repo.sh
+[ -f "$REPO" ] && sh "$REPO" repair >> "$LAUNCHER_LOG" 2>&1
+
 for component in opencreator_3mf opencreator_machine; do
     ln -sf "/usr/data/opencreator/moonraker/$component.py" \
         "$MOONRAKER/moonraker/components/$component.py"
@@ -61,6 +64,7 @@ while true; do
     if [ -x "$MPY" ]; then
         [ -f /usr/data/opencreator/plugin-manager/oc-plugin ] &&
             sh /usr/data/opencreator/plugin-manager/oc-plugin sync --only moonraker >> "$LAUNCHER_LOG" 2>&1
+        [ -f "$REPO" ] && sh "$REPO" exclude >> "$LAUNCHER_LOG" 2>&1
         log_launcher "Launching Moonraker..."
         rm -rf "$OC/tmp"/*
         TMPDIR="$OC/tmp" "$MPY" "$MOONRAKER/moonraker/moonraker.py" -d "$OC"

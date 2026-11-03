@@ -502,6 +502,8 @@ class SocUpdater(Updater):
             shutil.rmtree(old, ignore_errors=True)
             self.log("loopscript %s: updated" % part)
             changed = True
+            if part == "startup":
+                self.repair_moonraker_repo()
         version = src_root / "opencreator" / "version.txt"
         if version.is_file() and (not (self.ocdir / "version.txt").is_file()
                                   or (self.ocdir / "version.txt").read_bytes() != version.read_bytes()):
@@ -533,6 +535,20 @@ class SocUpdater(Updater):
             except Exception:
                 pass
         return changed
+
+    def repair_moonraker_repo(self):
+        """A Moonraker checkout its update manager calls invalid, put right now
+        instead of at the next boot (startup/moonraker-repo.sh)."""
+        script = self.ocdir / "startup" / "moonraker-repo.sh"
+        if not script.is_file():
+            return
+        try:
+            r = subprocess.run(["sh", str(script), "live"], stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, timeout=60)
+            for line in r.stdout.decode(errors="replace").splitlines():
+                self.log(line)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            self.log("moonraker repo: repair failed: %s" % e)
 
     def config_state(self):
         """What a conflicted merge depends on: the live configs and their bases."""

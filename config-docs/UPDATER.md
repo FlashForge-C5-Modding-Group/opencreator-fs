@@ -79,6 +79,9 @@ The first run after install only notes the checkout's commit
   unless you changed it. `/usr/data/opencreator/.installed/<folder>.md5` lists what was
   installed; the installer writes the same list. The copy is then swapped in.
   Running scripts keep their old copy, so new startup scripts run from the next boot.
+  After new startup files go in, `startup/moonraker-repo.sh live` puts right a
+  Moonraker checkout Moonraker calls invalid straight away (see
+  [MOONRAKER_REPO.md](MOONRAKER_REPO.md)).
 - `version.txt` and the nginx snippets in `/usr/data/nginx/conf.d` are updated.
 - `/usr/prog/PROGRAM/software/firmwareExe` is updated only while it's the OpenCreator
   launcher, never over FlashForge's own binary, so a rollback to stock stays.
