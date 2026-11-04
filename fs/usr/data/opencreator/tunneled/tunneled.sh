@@ -14,6 +14,7 @@ sh "$SCRIPTS/05-entfix.sh"
 sh "$SCRIPTS/06-sftp.sh"
 sh "$SCRIPTS/30-camera.sh" &
 sh "$SCRIPTS/40-grumpyscreen.sh" &
+sh "$SCRIPTS/41-helixscreen.sh" &
 
 while true; do
     /usr/prog/Python-3.8.2/bin/python3 /usr/prog/c5-tunnel-socat/c5_socat.py
