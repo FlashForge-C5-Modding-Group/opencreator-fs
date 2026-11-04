@@ -412,7 +412,12 @@ purges; if flow calibration is also off, the used-tool preparation loop is
 skipped entirely. The purge line in front of the print has its own switch,
 **purge_line** (default on, `purge_line_default`), toggled with
 `C5_MISC_PURGE_LINE_ON`/`C5_MISC_PURGE_LINE_OFF` or per job with
-`C5_PRINT_START ... PURGE_LINE=0`. Flow calibration remains independent and still extrudes its
+`C5_PRINT_START ... PURGE_LINE=0`. **purge_line_all_tools** (default off,
+`C5_MISC_PURGE_LINE_ALL_TOOLS_ON`/`_OFF`, or `PURGE_LINE_ALL_TOOLS=1` per job)
+gives every tool in `TOOLS` and `USED_TOOLS` its own purge line after the mesh,
+each `purge_tool_spacing` (`KAMP_Settings.cfg`) further out, at its `HOTENDn`.
+The automatic virtual-SD start passes `HOTENDn` for the other used tools from
+Orca's `; nozzle_temperature_initial_layer`. Flow calibration remains independent and still extrudes its
 measurement strokes when enabled. Explicit manual `C5_TOOL_PURGE` and
 `C5_PURGE_LINE` commands are unaffected. The previous
 `C5_MISC_FLOW_ON`/`C5_MISC_FLOW_OFF` commands remain available for scripts,
