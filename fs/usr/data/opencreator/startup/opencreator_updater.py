@@ -38,6 +38,7 @@ FS_GIT_URL = "https://github.com/FlashForge-C5-Modding-Group/opencreator-fs.git"
 LOOPSCRIPT_PARTS = ("startup", "firmware", "tunneled", "moonraker", "fluidd", "plugin-manager",
                     "mcu-flash")
 NGINX_CONF_D = Path("/usr/data/nginx/conf.d")
+GRUMPYSCREEN_DIR = Path("/usr/data/grumpyscreen")
 FIRMWARE_EXE = Path("/usr/prog/PROGRAM/software/firmwareExe")
 STOCK_STARTUP = (Path("/usr/prog/app_startup.sh"), Path("/usr/prog/PROGRAM/runFirmwareExe.sh"))
 SOC_LOG = Path("/tmp/opencreator-updater.log")
@@ -440,6 +441,7 @@ class SocUpdater(Updater):
         self.ocdir = Path(ocdir)
         self.loopscript_applied = self.ocdir / ".loopscript-commit"
         self.nginx = NGINX_CONF_D
+        self.grumpyscreen = GRUMPYSCREEN_DIR
         self.firmware_exe = FIRMWARE_EXE
         self.control = STOCK_CONTROL
 
@@ -508,6 +510,16 @@ class SocUpdater(Updater):
         if version.is_file() and (not (self.ocdir / "version.txt").is_file()
                                   or (self.ocdir / "version.txt").read_bytes() != version.read_bytes()):
             shutil.copy2(str(version), str(self.ocdir / "version.txt"))
+        # GrumpyScreen reads its translations from beside its binary; only where
+        # it is installed. It picks them up the next time it starts.
+        if (self.grumpyscreen / "grumpyscreen").is_file():
+            for lang in sorted((src_root / "grumpyscreen" / "languages").glob("*.json")):
+                dest = self.grumpyscreen / "languages" / lang.name
+                if dest.is_file() and dest.read_bytes() == lang.read_bytes():
+                    continue
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                write_atomic(dest, lang.read_bytes(), 0o644)
+                self.log("grumpyscreen language %s: updated" % lang.name)
         for conf in sorted((src_root / "nginx" / "conf.d").glob("*.conf")):
             dest = self.nginx / conf.name
             if dest.is_file() and dest.read_bytes() == conf.read_bytes():

@@ -228,6 +228,22 @@ class OverlayTest(unittest.TestCase):
         s.sync_loopscript()
         self.assertEqual(s.firmware_exe.read_bytes(), b"#!/bin/sh\nnew\n")
 
+    def test_grumpyscreen_languages(self):
+        s = up.SocUpdater(config_dir=self.tmp / "config", clone=self.tmp / "clone", ocdir=self.tmp / "oc",
+                          log_path=self.tmp / "log")
+        s.nginx, s.firmware_exe = self.tmp / "nginx", self.tmp / "firmwareExe"
+        s.grumpyscreen = self.tmp / "grumpyscreen"
+        s.api = lambda *a, **k: None
+        src = self.tmp / "clone" / "fs" / "usr" / "data" / "grumpyscreen" / "languages"
+        src.mkdir(parents=True)
+        (src / "de.json").write_text('{"name": "Deutsch"}')
+        s.sync_loopscript()
+        self.assertFalse(s.grumpyscreen.exists())  # not installed: left alone
+        s.grumpyscreen.mkdir()
+        (s.grumpyscreen / "grumpyscreen").write_bytes(b"\x7fELF")
+        s.sync_loopscript()
+        self.assertEqual((s.grumpyscreen / "languages" / "de.json").read_text(), '{"name": "Deutsch"}')
+
 
 @unittest.skipUnless(shutil.which("sh"), "needs sh")
 class RestartTest(unittest.TestCase):

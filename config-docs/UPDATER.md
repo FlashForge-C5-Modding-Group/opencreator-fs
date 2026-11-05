@@ -83,6 +83,10 @@ The first run after install only notes the checkout's commit
   Moonraker checkout Moonraker calls invalid straight away (see
   [MOONRAKER_REPO.md](MOONRAKER_REPO.md)).
 - `version.txt` and the nginx snippets in `/usr/data/nginx/conf.d` are updated.
+- GrumpyScreen's translations (`fs/usr/data/grumpyscreen/languages/*.json`) are copied
+  beside its binary in `/usr/data/grumpyscreen/languages`, only where GrumpyScreen is
+  installed. Languages you added yourself are kept. GrumpyScreen picks up changes the next
+  time it starts.
 - `/usr/prog/PROGRAM/software/firmwareExe` is updated only while it's the OpenCreator
   launcher, never over FlashForge's own binary, so a rollback to stock stays.
 
