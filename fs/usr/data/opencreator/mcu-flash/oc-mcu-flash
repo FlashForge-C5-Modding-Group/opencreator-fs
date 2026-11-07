@@ -35,7 +35,7 @@ esac
 
 pids_of() {
     for d in /proc/[0-9]*; do
-        tr '\0' ' ' < "$d/cmdline" 2>/dev/null | grep -q "$1" &&
+        tr '\0' ' ' 2>/dev/null < "$d/cmdline" | grep -q "$1" &&
             echo "${d#/proc/}"
     done
 }
