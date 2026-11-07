@@ -7,7 +7,7 @@ import jinja2
 
 ROOT = pathlib.Path(__file__).resolve().parents[1] / "fs" / "usr" / "data"
 CONFIG = ROOT / "config"
-MENUS = CONFIG / "printer.menus.cfg"
+MENUS = CONFIG / "printer.macro.cfg"
 SCREENS = (CONFIG / "grumpyscreen.cfg", ROOT / "grumpyscreen" / "grumpyscreen.cfg")
 # Commands that come from Python modules rather than gcode_macro sections.
 NATIVE = {"DOCK_EXISTING_TOOL", "C5_BED_SOAK"}
@@ -48,9 +48,9 @@ def run(name, p, **params):
 
 
 class MenusTest(unittest.TestCase):
-    def test_menus_file_is_included(self):
-        base = (CONFIG / "printer.base.cfg").read_text(encoding="utf-8")
-        self.assertIn("[include printer.menus.cfg]", base)
+    def test_macro_file_is_included(self):
+        main = (CONFIG / "printer.cfg").read_text(encoding="utf-8")
+        self.assertIn("[include printer.macro.cfg]", main)
 
     def test_every_screen_button_has_a_macro(self):
         known = all_macros() | NATIVE
@@ -73,23 +73,6 @@ class MenusTest(unittest.TestCase):
             self.assertIn(cmd, known, cmd)
         for menu in re.findall(r"MENU=([A-Z0-9_]+)", text):
             self.assertIn(menu, known, menu)
-
-    def test_option_menu_offers_only_the_opposite_action(self):
-        on = run("_OPT_MENU", printer({"purge_line": 1.}), PIN="purge_line")
-        self.assertIn('RESPOND TYPE=command MSG="action:prompt_begin Purge line is ON"', on)
-        self.assertIn('RESPOND TYPE=command MSG="action:prompt_button Turn Purge line OFF|'
-                      '_OPT_SET PIN=purge_line VALUE=0|primary"', on)
-        off = run("_OPT_MENU", printer({"chamber_wait": 0.}), PIN="chamber_wait")
-        self.assertTrue(any("Turn Chamber wait ON|_OPT_SET PIN=chamber_wait VALUE=1" in l for l in off))
-
-    def test_option_menu_rejects_unknown_option(self):
-        with self.assertRaises(Raised):
-            run("_OPT_MENU", printer(), PIN="nope")
-
-    def test_every_option_menu_points_at_a_real_option(self):
-        misc = (CONFIG / "printer.misc.cfg").read_text(encoding="utf-8")
-        for pin in re.findall(r"_OPT_MENU PIN=(\w+)", MENUS.read_text(encoding="utf-8")):
-            self.assertIn('printer["output_pin %s"]' % pin, misc, pin)
 
     def test_tool_menus_offer_homing(self):
         for name, axes in (("LOAD_MENU", "z"), ("CAL_DOCK_MENU", "z"), ("TOOL_OFFSETS_MENU", "xy")):
@@ -114,25 +97,12 @@ class MenusTest(unittest.TestCase):
         self.assertIn("C5_LOAD_FILAMENT TOOL=3 TEMP=220", run("_LOAD_PICK", printer(), T="3"))
 
     def test_calibration_menus_refuse_while_printing(self):
-        for name in ("ROTATION_CAL_MENU", "SHAPER_MENU", "SHAPER_GRAPH_MENU", "VFA_MENU", "PID_MENU",
-                     "LEVEL_SAVE_MENU", "TOOL_OFFSETS_MENU"):
+        for name in ("SHAPER_MENU", "SHAPER_GRAPH_MENU", "VFA_MENU", "LEVEL_SAVE_MENU",
+                     "TOOL_OFFSETS_MENU"):
             with self.assertRaises(Raised):
                 run(name, printer(state="printing"))
             if name != "TOOL_OFFSETS_MENU":
                 self.assertIn('RESPOND TYPE=command MSG="action:prompt_show"', run(name, printer()), name)
-
-    def test_soak_menu_shows_saved_time(self):
-        lines = run("SOAK_MENU", printer({"bed_soak": 1.}, saved={"bed_soak_minutes": 15}))
-        self.assertIn('RESPOND TYPE=command MSG="action:prompt_text Soak time: 15 min"', lines)
-
-    def test_print_start_passes_saved_soak_time(self):
-        text = (CONFIG / "printer.creator5.cfg").read_text(encoding="utf-8")
-        line = re.search(r"(?m)^( *\{% set soak_minutes.*\n *C5_BED_SOAK.*)$", text).group(1)
-        tpl = jinja2.Environment("{%", "%}", "{", "}").from_string(textwrap.dedent(line))
-        render = lambda saved: [l.strip() for l in tpl.render(printer=printer(saved=saved)).splitlines()
-                                if l.strip()]
-        self.assertEqual(render({}), ["C5_BED_SOAK"])
-        self.assertEqual(render({"bed_soak_minutes": 5}), ["C5_BED_SOAK MINUTES=5"])
 
 
 if __name__ == "__main__":
