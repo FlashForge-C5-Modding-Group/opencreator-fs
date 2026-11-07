@@ -229,7 +229,10 @@ Run `C5_CALIBRATE_OFFSETS` with no arguments to be walked through it in a
 Fluidd/Mainsail prompt: all tools or one tool, then build-plate removal, then
 (single tool only) whether to also refresh the levelboard probe reference.
 All-tool calibration offers to home first, with the plate still installed,
-if the printer is not homed. The final answer runs the command below with
+if the printer is not homed. When Z is homed, the bed is lowered to
+`plate_removal_z` (60 mm by default, set in `[creator5_toolchanger]`) before
+the removal prompt, so the plate slides out under the nozzle; a bed that is
+already lower stays put. The final answer runs the command below with
 the matching arguments. The prompt is built into the toolchanger module of
 Kalico as `C5_OFFSET_WIZARD`; the firmware's own
 `C5_TOOL_OFFSET_CALIBRATE` and `C5_CALIBRATE_ALL_OFFSETS` open it too when
