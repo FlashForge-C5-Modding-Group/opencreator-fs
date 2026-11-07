@@ -618,11 +618,16 @@ the measured temperature reaches at least the target minus 2 C before feeding,
 even when cold extrusion is enabled. Measured room temperature is never used
 as the loading or cooldown operating temperature.
 
-AFC's "load lane" button sends `CHANGE_TOOL LANE=extruderN`. Outside a print, a
-`CHANGE_TOOL` macro (in `printer.afc-standalone.cfg`) runs
-`C5_LOAD_FILAMENT TOOL=N` instead, with `NEW_EXTRUDER_TEMP` as `TEMP` and
-`PURGE_LENGTH` as `LENGTH` when given. During a print, it's AFC's own tool change
-(`_AFC_CHANGE_TOOL`).
+AFC's "load lane" button sends `CHANGE_TOOL LANE=extruderN` in Fluidd, and
+`TOOL_LOAD LANE=extruderN` in GrumpyScreen's AFC panel. Outside a print, both
+macros (in `printer.afc-standalone.cfg`) run `C5_LOAD_FILAMENT TOOL=N` instead,
+so the nozzle heats, purges at the bucket, cools and docks. `CHANGE_TOOL` passes
+`NEW_EXTRUDER_TEMP` as `TEMP` and `PURGE_LENGTH` as `LENGTH` when given. During a
+print or pause, they're AFC's own commands (`_AFC_CHANGE_TOOL`, `_AFC_TOOL_LOAD`).
+AFC's own `TOOL_LOAD` only picks the tool up, with no heating or purge.
+
+If X or Y is not homed, the macros show a "Home required" prompt with a "Home now"
+button instead of starting the load.
 
 Specify a nozzle with `C5_LOAD_FILAMENT TOOL=2 TEMP=255 LENGTH=20`, or several
 with `C5_LOAD_FILAMENT TOOLS=0,2 TEMP0=220 TEMP2=255 LENGTH=20`. With explicit
