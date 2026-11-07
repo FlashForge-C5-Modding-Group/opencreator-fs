@@ -18,6 +18,48 @@ MODULE_RE = re.compile(r"^[a-z0-9_]+\.py$")
 KLIPPER_INCLUDE = "[include plugins/*.cfg]"
 MOONRAKER_INCLUDE = "[include plugins/moonraker/*.conf]"
 KEEP = "00-oc-plugins.conf"
+# The OC_PLUGINS dialog, written into the Klipper plugins folder at every sync. Plugin
+# ids can't start with "_", so no plugin's own config can take this name.
+MENU = "_oc-plugins.cfg"
+MENU_MACROS = """
+[gcode_macro OC_PLUGINS]
+description: Show the installed OpenCreator plugins
+variable_plugins: @PLUGINS@
+gcode:
+  RESPOND TYPE=command MSG="action:prompt_end"
+  RESPOND TYPE=command MSG="action:prompt_begin Plugins ({plugins|length})"
+  {% if not plugins %}
+    RESPOND TYPE=command MSG="action:prompt_text No plugins are installed. Install one over SSH with: oc-plugin install <git URL>"
+  {% else %}
+    RESPOND TYPE=command MSG="action:prompt_text Tap a plugin for its details."
+    {% for plugin in plugins %}
+      RESPOND TYPE=command MSG="action:prompt_button {plugin.label}|OC_PLUGIN_INFO ID={plugin.id}|{plugin.color}"
+    {% endfor %}
+  {% endif %}
+  RESPOND TYPE=command MSG="action:prompt_footer_button Close|_OC_PLUGINS_CLOSE"
+  RESPOND TYPE=command MSG="action:prompt_show"
+
+[gcode_macro OC_PLUGIN_INFO]
+description: Show one plugin's details (ID=plugin id)
+gcode:
+  {% set found = printer["gcode_macro OC_PLUGINS"].plugins|selectattr("id", "equalto", params.ID|default("")|lower)|list %}
+  {% if not found %}
+    { action_raise_error("No plugin with ID " ~ params.ID|default("")) }
+  {% endif %}
+  {% set plugin = found[0] %}
+  RESPOND TYPE=command MSG="action:prompt_end"
+  RESPOND TYPE=command MSG="action:prompt_begin {plugin.title}"
+  {% for line in plugin.lines %}
+    RESPOND TYPE=command MSG="action:prompt_text {line}"
+  {% endfor %}
+  RESPOND TYPE=command MSG="action:prompt_footer_button Back|OC_PLUGINS"
+  RESPOND TYPE=command MSG="action:prompt_footer_button Close|_OC_PLUGINS_CLOSE"
+  RESPOND TYPE=command MSG="action:prompt_show"
+
+[gcode_macro _OC_PLUGINS_CLOSE]
+gcode:
+  RESPOND TYPE=command MSG="action:prompt_end"
+"""
 
 
 class PluginError(Exception):
@@ -62,13 +104,41 @@ def _inside(root, rel, what):
     return full
 
 
+def zmod_config(root):
+    """A ZMOD plugin's config: <name>.cfg, or en/<name>.cfg if it's translated."""
+    pid = os.path.basename(os.path.normpath(root)).lower()
+    for sub in ("", "en"):
+        folder = os.path.join(root, sub)
+        if not os.path.isdir(folder):
+            continue
+        for name in sorted(os.listdir(folder)):
+            if name.lower() == pid + ".cfg" and os.path.isfile(os.path.join(folder, name)):
+                return os.path.join(sub, name) if sub else name
+    return None
+
+
+def zmod_manifest(root):
+    """ZMOD plugins have no manifest: a repo named after the plugin, with its .cfg. Only the
+    config is used; their install/uninstall/update scripts expect ZMOD and are not run."""
+    rel = zmod_config(root)
+    if rel is None:
+        return None
+    pid = os.path.basename(os.path.normpath(root)).lower()
+    info = git_info(root)
+    return {"id": pid, "name": pid, "version": "git " + info["commit"] if info else "zmod",
+            "description": "ZMOD plugin: its Klipper config only", "zmod": True, "klipper_config": rel}
+
+
 def load_manifest(root):
     path = os.path.join(root, MANIFEST)
     try:
         with open(path) as f:
             m = json.load(f)
     except FileNotFoundError:
-        raise PluginError("no %s in %s" % (MANIFEST, root))
+        m = zmod_manifest(root)
+        if m is None:
+            raise PluginError("no %s (or ZMOD %s.cfg) in %s"
+                              % (MANIFEST, os.path.basename(os.path.normpath(root)), root))
     except ValueError as e:
         raise PluginError("%s is not valid JSON: %s" % (MANIFEST, e))
     if not isinstance(m, dict):
@@ -127,7 +197,9 @@ def installed(p):
         return out
     for name in sorted(os.listdir(p.plugins)):
         root = os.path.join(p.plugins, name)
-        if os.path.isfile(os.path.join(root, MANIFEST)):
+        if name.startswith("."):
+            continue
+        if os.path.isfile(os.path.join(root, MANIFEST)) or zmod_config(root):
             out.append(root)
     return out
 
@@ -215,6 +287,75 @@ def update_manager_section(root, m):
             % (m["id"], root, info["origin"], info["branch"], " ".join(services)))
 
 
+# ---- OC_PLUGINS dialog ---------------------------------------------------------
+
+def _prompt_text(value):
+    """Text safe inside RESPOND MSG="..." and an action:prompt button."""
+    return " ".join(str(value).replace('"', "'").replace("|", "/").split())
+
+
+def _parts(m):
+    out = []
+    names = [os.path.splitext(os.path.basename(r))[0] for r in m["klippy_extras"]]
+    if names:
+        out.append("Klipper module %s" % ", ".join(names))
+    if m.get("klipper_config"):
+        out.append("Klipper config")
+    names = [os.path.splitext(os.path.basename(r))[0] for r in m["moonraker_components"]]
+    if names:
+        out.append("Moonraker component %s" % ", ".join(names))
+    if m.get("moonraker_config"):
+        out.append("Moonraker config")
+    return out
+
+
+def plugin_summaries(p):
+    """Each installed plugin as the OC_PLUGINS dialog shows it."""
+    disabled = set(read_state(p)["disabled"])
+    out = []
+    for root in installed(p):
+        folder = os.path.basename(root)
+        try:
+            m = load_manifest(root)
+        except PluginError as e:
+            out.append({"id": folder.lower(), "label": "%s (broken)" % folder, "color": "error",
+                        "title": folder, "lines": ["This plugin's manifest is broken: %s" % e,
+                                                   "Fix or remove it over SSH: oc-plugin remove %s" % folder]})
+            continue
+        enabled = m["id"] not in disabled
+        lines = ["Version %s, %s" % (m["version"], "enabled" if enabled else "disabled")]
+        if m.get("author"):
+            lines.append("By %s" % m["author"])
+        if m.get("description"):
+            lines.append(m["description"])
+        parts = _parts(m)
+        if parts:
+            lines.append("Adds: %s" % "; ".join(parts))
+        info = git_info(root)
+        if info:
+            lines.append("From %s (%s@%s)" % (info["origin"], info["branch"], info["commit"]))
+        else:
+            lines.append("Installed from a local folder")
+        if m.get("homepage") and (not info or m["homepage"] not in info["origin"]):
+            lines.append(m["homepage"])
+        lines.append("ID %s. Manage it over SSH: oc-plugin %s %s, update, remove"
+                     % (m["id"], "disable" if enabled else "enable", m["id"]))
+        out.append({"id": m["id"], "label": "%s %s%s" % (m["name"], m["version"], "" if enabled else " (disabled)"),
+                    "color": "primary" if enabled else "secondary", "title": m["name"], "lines": lines})
+    for s in out:
+        s["label"], s["title"] = _prompt_text(s["label"]), _prompt_text(s["title"])
+        s["lines"] = [_prompt_text(l) for l in s["lines"]]
+    return out
+
+
+def menu_config(p):
+    # Klipper reads variable_ values with ast.literal_eval, but its config parser cuts a
+    # line at # or ;. Both only occur inside strings here, so escaping them is safe.
+    literal = repr(plugin_summaries(p)).replace("#", "\\x23").replace(";", "\\x3b")
+    return ("# Written by oc-plugin at every sync; edits are replaced. OC_PLUGINS shows the plugins.\n"
+            + MENU_MACROS.replace("@PLUGINS@", literal))
+
+
 def sync(p, klipper=True, moonraker=True):
     """Make the links and config includes match the enabled plugins. Safe to run any time."""
     disabled = set(read_state(p)["disabled"])
@@ -263,6 +404,7 @@ def sync(p, klipper=True, moonraker=True):
     if klipper:
         _prune(p.extras, extras, p)
         _prune(p.klipper_cfg, kcfg, p)
+        _write(os.path.join(p.klipper_cfg, MENU), menu_config(p))
         _ensure_include(os.path.join(p.config, "printer.cfg"), KLIPPER_INCLUDE)
     if moonraker:
         _prune(p.components, components, p)
@@ -350,11 +492,13 @@ def cmd_install(p, a):
     work = tempfile.mkdtemp(dir=p.plugins, prefix=".install-")
     try:
         src = a.source
+        # named like the source: a ZMOD plugin's id is its repo name
+        name = os.path.basename(src.rstrip("/\\"))
+        name = (name[:-4] if name.endswith(".git") else name) or "plugin"
+        stage = os.path.join(work, name)
         if os.path.isdir(src):
-            stage = os.path.join(work, "plugin")
             shutil.copytree(src, stage, symlinks=True, ignore=shutil.ignore_patterns(".git"))
         else:
-            stage = os.path.join(work, "plugin")
             # full history: Moonraker's update manager doesn't like shallow clones
             args = ["clone"] + (["--branch", a.ref] if a.ref else []) + [src, stage]
             git(*args)
@@ -378,6 +522,9 @@ def cmd_install(p, a):
     for msg in problems:
         print("warning: " + msg)
     print("Installed %s %s" % (m["name"], m["version"]))
+    scripts = [s for s in ("install.sh", "uninstall.sh", "update.sh") if os.path.isfile(os.path.join(dest, s))]
+    if m.get("zmod") and scripts:
+        print("note: ZMOD plugin; its %s were not run (they expect ZMOD)" % ", ".join(scripts))
     if not a.no_restart:
         restart(p, services_for(m))
     return 0

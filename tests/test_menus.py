@@ -9,8 +9,9 @@ ROOT = pathlib.Path(__file__).resolve().parents[1] / "fs" / "usr" / "data"
 CONFIG = ROOT / "config"
 MENUS = CONFIG / "printer.macro.cfg"
 SCREENS = (CONFIG / "grumpyscreen.cfg", ROOT / "grumpyscreen" / "grumpyscreen.cfg")
-# Commands that come from Python modules rather than gcode_macro sections.
-NATIVE = {"DOCK_EXISTING_TOOL", "C5_BED_SOAK"}
+# Commands that come from Python modules rather than gcode_macro sections, and
+# OC_PLUGINS, which oc-plugin sync writes into config/plugins/ on the printer.
+NATIVE = {"DOCK_EXISTING_TOOL", "C5_BED_SOAK", "OC_PLUGINS"}
 
 
 def all_macros():

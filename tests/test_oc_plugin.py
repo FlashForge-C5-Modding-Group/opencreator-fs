@@ -133,6 +133,102 @@ class PluginTest(unittest.TestCase):
         self.assertEqual(self.run_cli("update", "hello", "--no-restart"), 0)
         self.assertEqual(oc.load_manifest(str(self.tmp / "plugins" / "hello"))["version"], "1.1.0")
 
+    # ---- ZMOD plugins
+
+    def test_installs_a_zmod_plugin_by_its_cfg(self):
+        src = self.tmp / "zsrc" / "g28_tenz"
+        write(src / "g28_tenz.cfg", "[gcode_macro G28_TENZ]\ngcode:\n  G28\n")
+        write(src / "install.sh", "#!/bin/sh\nexit 1\n")
+        self.assertEqual(self.run_cli("install", str(src), "--no-restart"), 0)
+        link = self.tmp / "config" / "plugins" / "g28_tenz.cfg"
+        self.assertTrue(link.is_symlink())
+        self.assertEqual(link.resolve(), (self.tmp / "plugins" / "g28_tenz" / "g28_tenz.cfg").resolve())
+        _, plugins = self.menu()
+        self.assertEqual([(p["id"], p["label"]) for p in plugins], [("g28_tenz", "g28_tenz zmod")])
+        self.assertIn("ZMOD plugin: its Klipper config only", plugins[0]["lines"])
+        self.run_cli("disable", "g28_tenz", "--no-restart")
+        self.assertFalse(os.path.lexists(link))
+        self.run_cli("remove", "g28_tenz", "--no-restart")
+        self.assertFalse((self.tmp / "plugins" / "g28_tenz").exists())
+
+    def test_translated_zmod_plugin_uses_english(self):
+        src = self.tmp / "zsrc" / "Cut_Filament"
+        write(src / "en" / "cut_filament.cfg", "[gcode_macro CUT]\ngcode:\n  M400\n")
+        write(src / "ru" / "cut_filament.cfg", "[gcode_macro CUT]\ngcode:\n  M400\n")
+        self.assertEqual(self.run_cli("install", str(src), "--no-restart"), 0)
+        link = self.tmp / "config" / "plugins" / "cut_filament.cfg"
+        self.assertEqual(link.resolve(), (self.tmp / "plugins" / "cut_filament" / "en" / "cut_filament.cfg").resolve())
+
+    def test_folder_without_manifest_or_zmod_cfg_is_refused(self):
+        src = self.tmp / "zsrc" / "nothing"
+        write(src / "other.cfg", "[gcode_macro X]\ngcode:\n  M400\n")
+        self.assertEqual(self.run_cli("install", str(src), "--no-restart"), 1)
+        self.assertFalse((self.tmp / "plugins" / "nothing").exists())
+
+    # ---- OC_PLUGINS dialog
+
+    def menu(self):
+        """The generated config as Klipper reads it: its parser, its literal_eval."""
+        import ast
+        import configparser
+        path = self.tmp / "config" / "plugins" / oc.MENU
+        cfg = configparser.RawConfigParser(strict=False, inline_comment_prefixes=(";", "#"))
+        cfg.read_string(path.read_text())
+        return cfg, ast.literal_eval(cfg.get("gcode_macro OC_PLUGINS", "variable_plugins"))
+
+    def render(self, cfg, section, plugins, **params):
+        import jinja2
+        import textwrap
+        env = jinja2.Environment("{%", "%}", "{", "}")
+        tpl = env.from_string(textwrap.dedent(cfg.get(section, "gcode")))
+        out = tpl.render(plugins=plugins, params=params,
+                         printer={"gcode_macro OC_PLUGINS": {"plugins": plugins}},
+                         action_raise_error=lambda msg: (_ for _ in ()).throw(RuntimeError(msg)))
+        return [l.strip() for l in out.splitlines() if l.strip()]
+
+    def test_menu_lists_plugins_and_survives_klippers_parser(self):
+        manifest = json.loads((self.src / oc.MANIFEST).read_text())
+        manifest["description"] = 'Says "hi" #1; a|b'
+        manifest["author"] = "Someone"
+        (self.src / oc.MANIFEST).write_text(json.dumps(manifest))
+        self.run_cli("install", str(self.src), "--no-restart")
+        cfg, plugins = self.menu()
+        self.assertEqual([p["id"] for p in plugins], ["hello"])
+        hello = plugins[0]
+        self.assertEqual((hello["label"], hello["color"]), ("Hello 1.0.0", "primary"))
+        self.assertIn("Says 'hi' #1; a/b", hello["lines"])
+        self.assertIn("By Someone", hello["lines"])
+        self.assertIn("Adds: Klipper module oc_hello; Klipper config; Moonraker component oc_hello; "
+                      "Moonraker config", hello["lines"])
+        lines = self.render(cfg, "gcode_macro OC_PLUGINS", plugins)
+        self.assertIn('RESPOND TYPE=command MSG="action:prompt_begin Plugins (1)"', lines)
+        self.assertIn('RESPOND TYPE=command MSG="action:prompt_button Hello 1.0.0|OC_PLUGIN_INFO ID=hello|primary"',
+                      lines)
+        info = self.render(cfg, "gcode_macro OC_PLUGIN_INFO", plugins, ID="hello")
+        self.assertIn('RESPOND TYPE=command MSG="action:prompt_begin Hello"', info)
+        self.assertIn('RESPOND TYPE=command MSG="action:prompt_text Says \'hi\' #1; a/b"', info)
+        self.assertIn('RESPOND TYPE=command MSG="action:prompt_footer_button Back|OC_PLUGINS"', info)
+        with self.assertRaises(RuntimeError):
+            self.render(cfg, "gcode_macro OC_PLUGIN_INFO", plugins, ID="nope")
+
+    def test_menu_shows_disabled_broken_and_none(self):
+        self.run_cli("sync")
+        cfg, plugins = self.menu()
+        self.assertEqual(plugins, [])
+        self.assertTrue(any("No plugins are installed" in l
+                            for l in self.render(cfg, "gcode_macro OC_PLUGINS", plugins)))
+        self.run_cli("install", str(self.src), "--no-restart")
+        self.run_cli("disable", "hello", "--no-restart")
+        write(self.tmp / "plugins" / "junk" / oc.MANIFEST, "{not json")
+        self.run_cli("sync")
+        cfg, plugins = self.menu()
+        by_id = {p["id"]: p for p in plugins}
+        self.assertEqual((by_id["hello"]["label"], by_id["hello"]["color"]), ("Hello 1.0.0 (disabled)", "secondary"))
+        self.assertIn("oc-plugin enable hello", by_id["hello"]["lines"][-1])
+        self.assertEqual((by_id["junk"]["label"], by_id["junk"]["color"]), ("junk (broken)", "error"))
+        # a regular file, so pruning plugin links leaves it alone
+        self.assertFalse((self.tmp / "config" / "plugins" / oc.MENU).is_symlink())
+
 
 class ExamplePluginTest(unittest.TestCase):
     def test_example_manifest_is_valid(self):
