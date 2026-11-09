@@ -295,8 +295,9 @@ class PrintStartChamberTests(unittest.TestCase):
         self.assertEqual(self.chamber(out),
                          ["SET_HEATER_TEMPERATURE HEATER=chamber_heater TARGET=60.0"])
         bed = out.index("M140 S100.0")
-        self.assertEqual(out[bed + 1],
-                         "SET_HEATER_TEMPERATURE HEATER=chamber_heater TARGET=60.0")
+        chamber = out.index("SET_HEATER_TEMPERATURE HEATER=chamber_heater TARGET=60.0")
+        self.assertLess(bed, chamber)
+        self.assertLess(chamber, out.index("TEMPERATURE_WAIT SENSOR=heater_bed MINIMUM=100.0"))
 
     def test_chamber_target_is_capped_at_max_temp(self):
         out = self.commands({"TOOL": "0", "HOTEND": "260", "CHAMBER": "80"})
@@ -442,7 +443,26 @@ class PrintStartPlateCheckTests(unittest.TestCase):
         out = self.start({})
         home = out.index("C5_HOME_FOR_PRINT")
         self.assertTrue(out[home + 1].startswith("C5_CHECK_BUILD_PLATE "))
-        self.assertLess(home + 1, out.index("M140 S0.0"))
+        self.assertLess(out.index("M140 S0.0"), home)
+
+    def test_bed_heats_before_homing(self):
+        out = self.start({"BED": "60"})
+        self.assertEqual(out.count("M140 S60.0"), 1)
+        self.assertLess(out.index("M140 S60.0"), out.index("C5_HOME_FOR_PRINT"))
+
+    def test_no_bed_heating_without_filament(self):
+        printer = {
+            "output_pin flow_calibration": {"value": 0.},
+            "output_pin purge": {"value": 0.},
+            "output_pin bed_leveling": {"value": 0.},
+            "bed_mesh": {"profiles": {}},
+            "creator5_toolchanger": {"build_plate_detected": True},
+            "filament_switch_sensor extruder_tool_start": {
+                "filament_detected": False},
+        }
+        out = render_print_start(printer, {"TOOL": "0", "HOTEND": "220", "BED": "60"})
+        self.assertIn("CANCEL_PRINT", out)
+        self.assertFalse(any(line.startswith("M140") for line in out))
 
     def test_can_be_skipped(self):
         self.assertFalse(any(
