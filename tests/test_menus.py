@@ -98,7 +98,7 @@ class MenusTest(unittest.TestCase):
         self.assertIn("C5_LOAD_FILAMENT TOOL=3 TEMP=220", run("_LOAD_PICK", printer(), T="3"))
 
     def test_calibration_menus_refuse_while_printing(self):
-        for name in ("SHAPER_MENU", "SHAPER_GRAPH_MENU", "VFA_MENU", "LEVEL_SAVE_MENU",
+        for name in ("SHAPER_MENU", "SHAPER_GRAPH_MENU", "VFA_MENU", "VFA_GRAPH_MENU", "LEVEL_SAVE_MENU",
                      "TOOL_OFFSETS_MENU"):
             with self.assertRaises(Raised):
                 run(name, printer(state="printing"))

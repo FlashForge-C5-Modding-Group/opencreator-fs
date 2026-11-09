@@ -76,6 +76,7 @@ any client that shows Klipper prompts can answer it.
 | Clog Detection | Do you want Clog Detection enabled? | No / Yes | Sets the `clog_detection` switch |
 | Bed Heat Soak | Do you want bed heat soaking enabled? | No / Yes | Sets the `bed_soak` switch |
 | Offsets and docking | Where the offsets come from, and the calibration commands if they're off | Next | Next page |
+| VFA compensation | Recommends recalibrating VFA once, as OpenCreator's calibration is much better than stock's, and where to run it (VFA or VFA + Graphs, under Calibrations) | Next | Next page; nothing runs |
 | Thank you! | Thanks for using the first version of OpenCreator, Public Alpha Version 1, and the Discord link, https://discord.gg/RsdkqDtfww | Finish | Closes the dialog |
 
 **Clog Detection.** With it on, a tool's filament wheel (`fm_exN`) stopping

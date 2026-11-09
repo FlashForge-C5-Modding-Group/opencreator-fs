@@ -38,11 +38,25 @@ class FirstSetupTest(unittest.TestCase):
     def test_pressure_advance_page(self):
         self.assertIn("action:prompt_begin Pressure Advance Calibration", " ".join(render(STEP="1")))
 
-    def test_last_page_thanks_and_finishes(self):
+    def test_offsets_page_leads_to_vfa(self):
+        self.assertEqual(dict(buttons(render(STEP="5")))["Next"], "_OC_FIRST_SETUP STEP=6")
+
+    def test_vfa_page_recommends_recalibrating(self):
         lines = render(STEP="6")
+        text = " ".join(lines)
+        self.assertIn("action:prompt_begin VFA compensation", text)
+        self.assertIn("recommend recalibrating VFA", text)
+        self.assertEqual(dict(buttons(lines)), {"Next": "_OC_FIRST_SETUP STEP=7"})
+        # Only a recommendation: nothing runs and setup isn't finished yet
+        self.assertFalse(any("VFA_COMPENSATION" in line and "prompt" not in line for line in lines))
+        self.assertNotIn("SAVE_VARIABLE VARIABLE=c5_first_setup_done VALUE=1", lines)
+
+    def test_last_page_thanks_and_finishes(self):
+        lines = render(STEP="7")
         self.assertIn("SAVE_VARIABLE VARIABLE=c5_first_setup_done VALUE=1", lines)
         self.assertIn("first version of OpenCreator", " ".join(lines))
-        self.assertIn("action:prompt_end", " ".join(render(STEP="7")))
+        self.assertEqual(dict(buttons(lines))["Finish"], "_OC_FIRST_SETUP STEP=8")
+        self.assertIn("action:prompt_end", " ".join(render(STEP="8")))
 
 
 if __name__ == "__main__":
