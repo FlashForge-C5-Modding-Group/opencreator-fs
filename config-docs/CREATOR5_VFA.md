@@ -20,6 +20,34 @@ updated along with these config files because the restore command is new.
 calibrates and graphs only that motor. The other motor's damping isn't touched,
 and its saved values stay as they are.
 
+## How it compensates during a print
+
+The host only sends numbers; the cancelling runs in the mainboard firmware
+(`kalico/src/c5_mclib.c`).
+
+- At Klipper start, `[mclib stepper_x]` / `[mclib stepper_y]` send their saved
+  `td*_amp` / `td*_phase1` / `td*_phase2` to the mainboard
+  (`mclib_set_resonance_damp`). At print start, `C5_PRINT_START` runs
+  `STEPPER_RESONANCE_DAMP_ENABLE`, which sends them again with
+  `MCLIB_APPLY_CALIBRATION`. `C5_PRINT_STOP` (print end) and `CANCEL_PRINT` run
+  `STEPPER_RESONANCE_DAMP_DISABLE`, which sets all of them to 0.
+- The mainboard runs field-oriented current control for each motor every PWM
+  cycle (20 kHz, from the current samples TIMER2/TIMER4 trigger). For X and Y (`nonfast_control`), it subtracts
+  `sum(amp_k * sin(k * angle + phase))` for k = 1, 2, 4 from the d-axis
+  current reference. Here `angle` is the commanded electrical angle (it
+  advances with each step), and `phase` is `phase1` while the motor turns
+  forward and `phase2` while it turns backward. So the compensation follows the
+  motor's position at any speed, with no per-move work on the host.
+- It's added only while the step period is at least 2468 timer ticks. The motor
+  timer runs at 100 MHz (TIMER22, prescaler 3), so that's 24.68 µs per step,
+  about 510 mm/s of belt travel at 0.012625 mm per step (40.4 mm, 200 steps,
+  16 microsteps). Faster than about 560 mm/s (period under
+  `crossover_threshold - 100`, 2243 ticks), the motor switches to
+  `fast_control`, the observer-based high-speed mode, which has no
+  compensation. On CoreXY a pure X or Y move turns both motors at the toolhead
+  speed, and a 45 degree move turns one at 1.41 times it. So compensation holds
+  up to roughly 360 to 510 mm/s of toolhead speed, depending on direction.
+
 ## Finding each motor's resonance
 
 Before calibrating, each motor's resonance frequency is measured rather than
