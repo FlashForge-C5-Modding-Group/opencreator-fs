@@ -63,8 +63,8 @@ strongest; at most two are kept.
 
 Calibration runs each harmonic at the speed that puts it on the resonance's
 frequency. With one resonance, that's it. With two, it calibrates at each,
-sweeps the speeds again with each result, and keeps the one that leaves less
-vibration overall (`STEPPER_RESONANCE_AUTO_CALIBRATE`). The strongest peak isn't
+sweeps the speeds again with each result in both directions, and keeps the
+one that leaves less vibration overall (`STEPPER_RESONANCE_AUTO_CALIBRATE`). The strongest peak isn't
 always the best: the best cancelling setting depends on the speed it's tuned
 at. On one C5, X calibrated at its stronger 84 Hz resonance (12 to 48 mm/s)
 left 3 to 5 times more vibration from 30 to 120 mm/s than calibrated at its
@@ -86,10 +86,11 @@ measure.
 ## Graphs
 
 `VFA_COMPENSATION_GRAPH` (or **VFA + Graphs** in the touchscreen and Fluidd
-menus) does the same calibration, then repeats the speed sweep with
-compensation on, and draws one picture per motor to `config/vfa/`
-(`vfa_stepper_x.png`, `vfa_stepper_y.png`). It takes longer than
-`VFA_COMPENSATION`, by one more sweep per motor.
+menus) does the same calibration with `GRAPH=1`, which also measures the
+speeds with compensation on, and draws one picture per motor to `config/vfa/`
+(`vfa_stepper_x.png`, `vfa_stepper_y.png`). With two resonances the winner's
+check sweep (forward direction) is the "after" curve, so nothing extra is
+measured; with one, it takes one more sweep for that motor.
 
 Each picture explains itself:
 
