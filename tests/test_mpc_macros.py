@@ -62,6 +62,11 @@ def render_print_start(printer, params):
     return output
 
 
+def steps(out):
+    """The print start commands without the cancel check points."""
+    return [line for line in out if line != "_OC_START_CHECK"]
+
+
 def printer_state(kalico=True, control="mpc", bed_control="pid",
                   active="extruder"):
     heaters = ["extruder", "extruder1", "extruder2", "extruder3"]
@@ -401,8 +406,8 @@ class PrintStartPreheatTests(unittest.TestCase):
             "creator5_toolchanger": {"build_plate_detected": True},
             "filament_switch_sensor extruder_tool_start": {"filament_detected": True},
         }
-        out = render_print_start(printer, {"TOOL": "0", "HOTEND": "220",
-                                           "USED_TOOLS": "0,1", "IDLE2": "150"})
+        out = steps(render_print_start(printer, {"TOOL": "0", "HOTEND": "220",
+                                           "USED_TOOLS": "0,1", "IDLE2": "150"}))
         park = out.index("SMART_PARK")
         self.assertEqual(out[park + 1:park + 3], [
             "SET_HEATER_TEMPERATURE HEATER=extruder1 TARGET=100.0",
@@ -418,8 +423,8 @@ class PrintStartPreheatTests(unittest.TestCase):
             "creator5_toolchanger": {"build_plate_detected": True},
             "filament_switch_sensor extruder_tool_start": {"filament_detected": True},
         }
-        out = render_print_start(printer, {"TOOL": "0", "HOTEND": "220",
-                                           "USED_TOOLS": "0", "IDLE0": "150"})
+        out = steps(render_print_start(printer, {"TOOL": "0", "HOTEND": "220",
+                                                 "USED_TOOLS": "0", "IDLE0": "150"}))
         park = out.index("SMART_PARK")
         self.assertEqual(out[park + 1], "SET_HEATER_TEMPERATURE HEATER=extruder TARGET=220.0")
 
@@ -472,6 +477,74 @@ class PrintStartPlateCheckTests(unittest.TestCase):
     def test_rejects_bad_value(self):
         with self.assertRaisesRegex(RaisedError, "BUILDPLATE_CHECK"):
             self.start({"BUILDPLATE_CHECK": "2"})
+
+
+
+class PrintStartCancelCheckTests(unittest.TestCase):
+    def printer(self, **extra):
+        p = {
+            "output_pin flow_calibration": {"value": 1.},
+            "output_pin purge": {"value": 1.},
+            "output_pin bed_leveling": {"value": 1.},
+            "bed_mesh": {"profiles": {}},
+            "creator5_toolchanger": {"build_plate_detected": True},
+        }
+        for heater in ("extruder", "extruder1", "extruder2", "extruder3"):
+            p["filament_switch_sensor %s_tool_start" % heater] = {
+                "filament_detected": True}
+        p.update(extra)
+        return p
+
+    def check(self, cancel):
+        body = section(START_CONFIG, "gcode_macro _OC_START_CHECK")
+        gcode = textwrap.dedent(body.split("gcode:\n", 1)[1])
+        template = jinja2.Environment("{%", "%}", "{", "}").from_string(gcode)
+
+        def fail(message):
+            raise RaisedError(message)
+        out = template.render(cancel=cancel, action_raise_error=fail)
+        return [line.strip() for line in out.splitlines() if line.strip()]
+
+    def test_stops_only_when_a_cancel_is_waiting(self):
+        self.assertEqual(variables(section(
+            START_CONFIG, "gcode_macro _OC_START_CHECK")), {"cancel": 0})
+        self.assertEqual(self.check(0), [])
+        with self.assertRaisesRegex(RaisedError, "cancelled during print start"):
+            self.check(1)
+
+    def test_interrupt_sets_the_flag_and_stops_heat_waits(self):
+        # The name must contain INTERRUPT: Kalico runs such a script at once,
+        # without waiting for print start to finish
+        self.assertIn("INTERRUPT", "_OC_START_CANCEL_INTERRUPT")
+        self.assertEqual(render(START_CONFIG, "gcode_macro _OC_START_CANCEL_INTERRUPT", {}, {}), [
+            "SET_GCODE_VARIABLE MACRO=_OC_START_CHECK VARIABLE=cancel VALUE=1",
+            "HEATER_INTERRUPT"])
+
+    def test_print_start_clears_an_old_cancel_first(self):
+        out = render(START_CONFIG, "gcode_macro C5_PRINT_START", {}, {"TOOL": "0", "HOTEND": "220"})
+        self.assertEqual(out[0], "SET_GCODE_VARIABLE MACRO=_OC_START_CHECK VARIABLE=cancel VALUE=0")
+
+    def test_checks_after_homing_bed_each_purge_mesh_and_final_heat(self):
+        out = render_print_start(self.printer(), {
+            "TOOL": "0", "TOOLS": "0,1", "HOTEND": "220", "BED": "60"})
+        checks = [i for i, line in enumerate(out) if line == "_OC_START_CHECK"]
+        def after(command, nth=0):
+            idx = [i for i, line in enumerate(out) if line.startswith(command)][nth]
+            return out[idx + 1] == "_OC_START_CHECK"
+        # before the second half (after homing and the plate check)
+        self.assertLess(checks[0], out.index("STEPPER_RESONANCE_DAMP_ENABLE"))
+        self.assertGreater(checks[0], out.index("C5_HOME_FOR_PRINT"))
+        self.assertTrue(after("TEMPERATURE_WAIT SENSOR=heater_bed"))
+        # after each tool's purge, before the next tool or the mesh
+        self.assertTrue(after("AFC_UNSELECT_TOOL", 0))
+        self.assertTrue(after("AFC_UNSELECT_TOOL", 1))
+        self.assertEqual(out[out.index("BED_MESH_CLEAR") - 1], "_OC_START_CHECK")
+        self.assertTrue(after("BED_MESH_CALIBRATE"))
+        # around the final heat-up
+        final = [i for i, line in enumerate(out)
+                 if line == "TEMPERATURE_WAIT SENSOR=extruder MINIMUM=218.0"][-1]
+        self.assertEqual(out[final - 2], "_OC_START_CHECK")
+        self.assertEqual(out[final + 1], "_OC_START_CHECK")
 
 
 if __name__ == "__main__":

@@ -22,7 +22,7 @@ log_launcher() {
 REPO=/usr/data/opencreator/startup/moonraker-repo.sh
 [ -f "$REPO" ] && sh "$REPO" repair >> "$LAUNCHER_LOG" 2>&1
 
-for component in opencreator_3mf opencreator_machine; do
+for component in opencreator_3mf opencreator_machine opencreator_cancel; do
     ln -sf "/usr/data/opencreator/moonraker/$component.py" \
         "$MOONRAKER/moonraker/components/$component.py"
     grep -q "^\[$component\]" "$OC/config/moonraker.conf" ||
