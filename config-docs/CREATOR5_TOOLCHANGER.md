@@ -179,18 +179,27 @@ safe probing height from the factory mount coordinates.
 `C5_TOOL_OFFSET_CALIBRATE T=0 Z=1 SAVE=1 BUILDPLATE_REMOVED=1` probes Z using `[e_stop Z]`, then
 measures XY using `[e_stop X]` and `[e_stop Y]` on `levelboard:PD0`. It
 stores raw T0 to T3 measurements; G-code offsets are relative to T0, with
-the separate `zoffset.json` per-tool adjustment added to Z. Run
-`SAVE_CONFIG` after reviewing staged values.
+the separate `zoffset.json` per-tool adjustment added to Z. `SAVE=1` writes
+`extruder.json`, which is what's loaded at startup; there's no `SAVE_CONFIG`
+step.
 
 **Baby stepping is kept.** Every baby step (Fluidd's or Mainsail's, any
-`SET_GCODE_OFFSET Z_ADJUST=`) is written straight to the attached tool's
-`zoffset.json` adjustment (`z_offset_t1`–`z_offset_t4`, the same value the
-stock touchscreen sets), so the next print, and the same tool after a
-toolchange, start from it. The toolchanger remembers the Z offset it set for
-the attached tool (at pickup and in `C5_AUTO_NOZZLE_Z`); the difference is
-the baby stepping. Docking during a print, print end and cancel
-(`C5_SAVE_BABYSTEP` in `C5_PRINT_STOP` and `CANCEL_PRINT`) also save, to
-catch Z changes made some other way. A change larger than 1 mm isn't
+`SET_GCODE_OFFSET Z_ADJUST=`) is added straight to the attached nozzle's
+`zoffset.json` adjustment (`z_offset_t1`–`z_offset_t4` for T0–T3, the same
+value the stock touchscreen sets). Each nozzle has its own value, and the step
+goes to whichever head the mount sensors say is attached. The `Z_ADJUST` step
+itself is saved, so it's kept even after a restart with the tool still on.
+The file is read first, so a value something else wrote isn't lost.
+
+Every pickup, `C5_AUTO_NOZZLE_Z`, and the print-time Z on a toolchange read
+`zoffset.json` again and apply that nozzle's value: the file is what's used,
+including edits made outside Klipper. If it can't be read then, the last good
+values are used and the console says so; a print isn't stopped over it.
+
+Docking during a print, print end and cancel (`C5_SAVE_BABYSTEP` in
+`C5_PRINT_STOP` and `CANCEL_PRINT`) also save the difference between the
+offset the toolchanger set and the live one, to catch Z changes made some
+other way. A step saved as it happened isn't counted again. A change larger than 1 mm isn't
 treated as baby stepping and isn't saved, and a failed save only prints a
 message, never stops the print. `persist_babystep: False` in
 `[creator5_toolchanger]` turns it off (`C5_SAVE_BABYSTEP FORCE=1` still
@@ -245,9 +254,9 @@ without moving. Once the plate is removed, rerun it as
 must already be physically mounted; home XYZ first. Doors may remain open if
 the chamber heater is off. It
 automatically probes Z, then scans XY at the measured Z +0.6 mm. `SAVE=1`
-stages the values in Klipper and writes `/usr/data/firmwareRes/config/extruder.json`
-after making a timestamped backup. Run `SAVE_CONFIG` to persist the Klipper
-config too. `Z=0 SCAN_Z=<measured height>` is an opt-in XY-only mode. The
+writes `/usr/data/firmwareRes/config/extruder.json` after making a timestamped
+backup. That file is what's loaded at startup, so there's no `SAVE_CONFIG`
+step; nothing is staged for it. `Z=0 SCAN_Z=<measured height>` is an opt-in XY-only mode. The
 single-tool wrapper does not pick up or dock heads automatically.
 
 To measure all four in one run, first call `C5_CALIBRATE_OFFSETS TOOL=ALL` to
@@ -258,9 +267,8 @@ pin, then probes Z and scans XY for the bare levelboard reference; AFC then
 selects, probes Z, scans XY, and docks
 T0 through T3 in order. Each XY scan uses its own measured Z +0.6 mm. After
 all four succeed, it writes `extruder.json` atomically with a timestamped
-backup and stages the Klipper config. The stock `zoffset.json` is read as a
-separate per-tool fine adjustment and is not overwritten. Run `SAVE_CONFIG`
-after reviewing results. If any step fails, the sequence stops without
+backup. The stock `zoffset.json` is read as a
+separate per-tool fine adjustment and is not overwritten. If any step fails, the sequence stops without
 writing `extruder.json`, possibly with a head still attached. Inspect the
 tool and sensor state before resuming.
 
