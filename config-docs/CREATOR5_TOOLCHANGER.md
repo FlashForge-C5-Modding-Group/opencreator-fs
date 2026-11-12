@@ -352,6 +352,16 @@ Selecting a head that is already attached doesn't count. Set
 `toolchange_count_path` in `[creator5_toolchanger]` to keep it elsewhere.
 Edit or delete the file to reset it; it's re-read when Klipper restarts.
 
+## Nozzle hours
+
+While a print runs, each minute is added to the head that's printing. The
+totals are kept in seconds as `nozzle_seconds_t0` to `nozzle_seconds_t3` in
+`c5_misc_variables.cfg`, written every 10 minutes of printing and when the
+print ends, pauses or is cancelled.
+
+- `NOZZLE_HOURS` shows the hours per head, e.g. `T0: 12.3 h`.
+- `RESET_NOZZLE_HOURS T=<0-3>` zeroes one head after its nozzle is swapped.
+
 ## Printing and AFC
 
 Virtual-SD jobs started through Moonraker/Mainsail or `SDCARD_PRINT_FILE`
