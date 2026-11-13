@@ -1,7 +1,9 @@
 # Creator 5 mainboard and power supply fans
 
-Two fans on the mainboard are run by `_PCB_FAN_TICK` in `printer.base.cfg`, every 2 seconds. Both are
-`fan_generic` fans; GrumpyScreen shows them as sliders, but the macro sets them again within 2 s.
+`[c5_board_fans]` in `printer.base.cfg` (Kalico's `klippy/extras/c5_board_fans.py`) runs two fans on the
+mainboard, every second. It runs on its own timer, like Klipper's `controller_fan`, so long commands
+(`PID_CALIBRATE`, heat-up waits, homing) don't stop it. Both fans are `fan_generic` fans; GrumpyScreen
+shows them as sliders, but it sets them again within a second.
 
 ## Mainboard fan (`pcb_fan`, pin PD14)
 
@@ -24,7 +26,7 @@ The higher of two speeds:
 - **The mainboard fan's speed**, so a hot board also speeds this one up.
 - **The power supply's estimated load**: `heater_watts` (45 W) per hotend at its heater's duty, plus
   `motor_watts` (30 W) while X, Y or Z is powered, reaching 100% at `full_watts` (120 W). At least
-  `min_speed` (30%) while there is any load, and `heating_min` (50%) while any hotend has a target.
+  `psu_min_speed` (30%) while there is any load, and `heating_min` (50%) while any hotend has a target.
 
 Once the load is gone it keeps its speed, at most `runon_speed` (80%), for `runon` (60 s), then stops.
 
@@ -32,23 +34,29 @@ Once the load is gone it keeps its speed, at most `runon_speed` (80%), for `runo
 
 Input shaper calibration (`CALIBRATE_INPUT_SHAPER`, `CALIBRATE_INPUT_SHAPER_GRAPH`) and VFA calibration
 (`STEPPER_RESONANCE_FACTORY_CALIBRATE`, which `VFA_COMPENSATION` and the stock VFA button run) hold both fans
-at 50%, so their vibration stays the same through the measurement. `_FANS_HOLD SPEED=…` and `_FANS_RELEASE`
-do it by hand. A calibration stopped part way leaves the hold on until the next print start or restart.
+at 50% (`_FANS_HOLD`, then `_FANS_RELEASE`), so their vibration stays the same through the measurement. A
+calibration stopped part way leaves the hold on until the next print start or restart.
 
-## Settings
-
-The numbers are variables of `_PCB_FAN` and `_PSU_FAN`. Change them in `printer.base.cfg`, or try them
-until the next restart:
+## Commands and settings
 
 ```
-SET_GCODE_VARIABLE MACRO=_PCB_FAN VARIABLE=max_temp VALUE=65
-SET_GCODE_VARIABLE MACRO=_PSU_FAN VARIABLE=heating_min VALUE=0.5
+C5_BOARD_FANS                      # both speeds, the MCU temperature and the estimated load
+C5_BOARD_FANS HOLD=0.5             # hold both fans at 50%; HOLD=-1 releases
+C5_BOARD_FANS MAX_TEMP=65 HEATING_MIN=0.5   # change settings until restart
 ```
+
+Every option of `[c5_board_fans]` can be given that way (upper case). To keep a change, edit
+`printer.base.cfg`. `printer.c5_board_fans` in Moonraker has the speeds, the temperature, the load, the
+hold and the settings.
+
+Other options, with their defaults: `mainboard_fan: pcb_fan`, `psu_fan: heat_ctl_fan`,
+`sensor: temperature_sensor mainboard_mcu`, `steppers: stepper_x, stepper_y, stepper_z`,
+`heaters: extruder, extruder1, extruder2, extruder3`.
 
 ## Needs
 
 - The mainboard firmware with the MCU temperature sensor (`ADC_TEMPERATURE` on the GD32H737, Kalico
   `33d27fc5` or later). The SoC updater flashes it from `mcu-firmware/`; tunneled printers get it from the
   OpenCreator USB update.
-- Kalico with the `gd32h7` entry in `temperature_mcu.py`. The SoC updater brings Kalico up to date with each
-  OpenCreator update (see `UPDATER.md`).
+- Kalico with `c5_board_fans.py` and the `gd32h7` entry in `temperature_mcu.py`. The SoC updater brings
+  Kalico up to date with each OpenCreator update (see `UPDATER.md`).
