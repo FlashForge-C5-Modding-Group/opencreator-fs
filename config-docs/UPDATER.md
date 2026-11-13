@@ -122,8 +122,8 @@ when they differ.
   `VERSION`, a board already reporting it is only recorded, so a printer that is already
   current isn't flashed again.
 - Only the out-of-date boards are flashed, never during a print.
-- Nothing is flashed when the rest of that update failed (no checkout, a config conflict,
-  an error), until an update goes through.
+- It doesn't wait for the configs: a config conflict doesn't hold the firmware (or Kalico)
+  back, since Klipper breaks when they fall out of step, not over a config.
 - A live flash is tried once. A failed set of files is noted in
   `.opencreator-updater/mcu-failed`, reported in the console and not retried live until the
   files change. The boards that failed are staged in `/usr/data/opencreator/mcu-flash-pending/`
