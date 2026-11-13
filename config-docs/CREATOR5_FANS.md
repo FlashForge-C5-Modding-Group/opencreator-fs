@@ -11,7 +11,7 @@ It cools the mainboard and the X/Y/Z motor drivers, and follows the mainboard MC
 | Mainboard MCU | Speed |
 | --- | --- |
 | below `on_temp` (54.5 °C) | off |
-| `on_temp` to `max_temp` (54.5–60 °C) | `min_speed` (30%) rising in a straight line to 100% |
+| `on_temp` to `max_temp` (54.5–62 °C) | `min_speed` (30%) rising in a straight line to 100% |
 | `max_temp` and up | 100% |
 
 Once on, it stays at `min_speed` until the MCU is `hysteresis` (2 °C) under `on_temp`. While X, Y or Z is
@@ -34,7 +34,7 @@ The numbers are variables of `_PCB_FAN` and `_PSU_FAN`. Change them in `printer.
 until the next restart:
 
 ```
-SET_GCODE_VARIABLE MACRO=_PCB_FAN VARIABLE=max_temp VALUE=60
+SET_GCODE_VARIABLE MACRO=_PCB_FAN VARIABLE=max_temp VALUE=62
 SET_GCODE_VARIABLE MACRO=_PSU_FAN VARIABLE=heating_min VALUE=0.5
 ```
 
