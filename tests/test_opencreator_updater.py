@@ -396,5 +396,62 @@ class McuSyncTest(unittest.TestCase):
         self.assertEqual(self.flashed_sets(), ["eBoard.hex "])
 
 
+@unittest.skipUnless(shutil.which("git"), "needs git")
+class KalicoSyncTest(unittest.TestCase):
+    """SocUpdater.sync_kalico: a shallow Kalico clone follows its branch, once per fs commit."""
+
+    def setUp(self):
+        self.tmp = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.upstream, self.fs = self.tmp / "kalico-upstream", self.tmp / "clone"
+        for repo in (self.upstream, self.fs):
+            repo.mkdir()
+            git(repo, "init", "-q", "-b", "something")
+            (repo / "f").write_text("1")
+            git(repo, "add", "-A")
+            git(repo, "commit", "-q", "-m", "one")
+        self.kalico = self.tmp / "kalico"
+        subprocess.run(["git", "clone", "-q", "--depth", "1", "-b", "something", self.upstream.as_uri(),
+                        str(self.kalico)], check=True)
+        self.state = "standby"
+        self.s = up.SocUpdater(config_dir=self.tmp / "config", clone=self.fs, ocdir=self.tmp / "oc",
+                               log_path=self.tmp / "log")
+        self.s.klipper = self.kalico
+        self.s.printing = lambda: self.state == "printing"
+
+    def advance(self, repo):
+        (repo / "f").write_text(str(int((repo / "f").read_text()) + 1))
+        git(repo, "commit", "-q", "-am", "next")
+
+    def kalico_file(self):
+        return (self.kalico / "f").read_text()
+
+    def test_follows_the_branch_once_per_fs_commit(self):
+        self.advance(self.upstream)
+        self.s.sync_kalico()
+        self.assertEqual(self.kalico_file(), "2")
+        self.advance(self.upstream)
+        self.s.sync_kalico()                    # same fs commit: left alone
+        self.assertEqual(self.kalico_file(), "2")
+        self.advance(self.fs)
+        self.s.sync_kalico()
+        self.assertEqual(self.kalico_file(), "3")
+
+    def test_waits_while_printing(self):
+        self.advance(self.upstream)
+        self.state = "printing"
+        self.s.sync_kalico()
+        self.assertEqual(self.kalico_file(), "1")
+        self.state = "standby"
+        self.s.sync_kalico()
+        self.assertEqual(self.kalico_file(), "2")
+
+    def test_local_changes_are_kept(self):
+        self.advance(self.upstream)
+        (self.kalico / "f").write_text("mine")
+        self.s.sync_kalico()
+        self.assertEqual(self.kalico_file(), "mine")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -22,7 +22,7 @@ merges the template's changes into your live config. It keeps:
 | Templates | `fs/usr/data/config/*.cfg` in the opencreator-fs checkout (`/usr/data/opencreator/opencreator-fs`) | `pi/config/*.cfg` and `pi/config/.fluidd-theme/*` in the opencreator-tunnel checkout |
 | Live config | `/usr/data/opencreator/klipper/config` | `~/printer_data/config` (`OC_UPDATER_CONFIG_DIR`) |
 | When | Watches the checkout every 60 s; applies each new commit | Once, each time Moonraker's update manager pulls opencreator-tunnel |
-| Also | Updates OpenCreator's own folders (startup scripts, firmwareExe launcher, Moonraker components, Fluidd layout, plugin manager, nginx snippets) | Pulls Klipper (`OC_UPDATER_KLIPPER_DIR`) |
+| Also | Updates OpenCreator's own folders (startup scripts, firmwareExe launcher, Moonraker components, Fluidd layout, plugin manager, nginx snippets), Kalico and the MCU firmware | Pulls Klipper (`OC_UPDATER_KLIPPER_DIR`) |
 | Log | `/tmp/opencreator-updater.log` | the service's journal (`journalctl -u opencreator-updater`) |
 
 It doesn't restart Klipper (the automatic restart is commented out for now). After an
@@ -92,6 +92,20 @@ The first run after install only notes the checkout's commit
 
 If the opencreator-fs checkout is missing (installs from before it was kept), the
 updater clones it, and Moonraker's update manager uses it from then on.
+
+## Kalico (SoC)
+
+Once per opencreator-fs commit, after the configs, the updater brings the Kalico checkout
+(`/usr/data/opencreator/klipper/klipper`) to the newest commit of the branch it's on: a shallow
+`git fetch` of that branch and a reset to it, as the installer does. That way a config that needs
+newer Kalico doesn't arrive without it.
+
+- Not while printing; it's tried again at the next check.
+- A checkout with local changes (`git status`, untracked files don't count) or not on a branch is
+  left as it is, and noted in the log.
+- A failed fetch (no network) is tried again at the next check.
+- Klipper isn't restarted for it: an MCU flash restarts it, or restart it yourself.
+- `soc --once --no-kalico` skips it.
 
 ## MCU firmware (SoC)
 

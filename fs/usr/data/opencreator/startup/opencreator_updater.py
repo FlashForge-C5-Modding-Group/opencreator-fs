@@ -444,6 +444,7 @@ class SocUpdater(Updater):
         self.grumpyscreen = GRUMPYSCREEN_DIR
         self.firmware_exe = FIRMWARE_EXE
         self.control = STOCK_CONTROL
+        self.klipper = SOC_KLIPPER
 
     def ensure_clone(self) -> bool:
         if (self.repo / ".git").is_dir():
@@ -615,6 +616,44 @@ class SocUpdater(Updater):
             self.restart_klipper(conflicts)
         return not conflicts
 
+    # ---- Kalico -----------------------------------------------------------------
+    def sync_kalico(self):
+        """Once per opencreator-fs commit, bring the Kalico checkout to the newest
+        commit of its branch, so new configs don't need Kalico they don't have yet.
+        Left alone while printing (tried again later), with local changes, or off a
+        branch. Klipper isn't restarted; an MCU flash or the user does that."""
+        try:
+            head = self.head()
+        except UpdateError:
+            return
+        record = self.state / "kalico-synced"
+        if self._read(record) == head or not (self.klipper / ".git").exists():
+            return
+        if self.printing():
+            return
+        try:
+            branch = self.git("rev-parse", "--abbrev-ref", "HEAD", cwd=self.klipper).decode().strip()
+            dirty = self.git("status", "--porcelain", "--untracked-files=no", cwd=self.klipper).strip()
+        except UpdateError as e:
+            self.log("Kalico: can't read the checkout (%s)" % e)
+            return
+        if branch == "HEAD" or dirty:
+            self.log("Kalico: %s, left as it is" % ("not on a branch" if branch == "HEAD" else "has local changes"))
+            write_atomic(record, (head + "\n").encode())
+            return
+        try:
+            before = self.git("rev-parse", "HEAD", cwd=self.klipper).decode().strip()
+            self.git("fetch", "--quiet", "--depth", "1", "origin", branch, cwd=self.klipper)
+            after = self.git("rev-parse", "FETCH_HEAD", cwd=self.klipper).decode().strip()
+            if after != before:
+                self.git("reset", "--quiet", "--hard", "FETCH_HEAD", cwd=self.klipper)
+        except UpdateError as e:
+            self.log("Kalico: not updated (%s); trying again later" % e)
+            return
+        write_atomic(record, (head + "\n").encode())
+        self.log("Kalico (%s): %s" % (branch, "updated %s -> %s" % (before[:9], after[:9])
+                                      if after != before else "already up to date"))
+
     # ---- MCU firmware -----------------------------------------------------------
     def mcu_firmware(self):
         """{hex name: sha256} from mcu-firmware/ in the checkout, each file checked
@@ -751,6 +790,11 @@ class SocUpdater(Updater):
                 ok = False
             try:
                 if ok:
+                    self.sync_kalico()
+            except Exception as e:
+                self.log("Kalico update failed: %s" % e)
+            try:
+                if ok:
                     self.sync_mcu()
             except Exception as e:
                 self.log("MCU firmware update failed: %s" % e)
@@ -814,6 +858,7 @@ def main(argv=None):
     ap.add_argument("--no-loopscript", action="store_true", help="soc: leave OpenCreator's own folders alone")
     ap.add_argument("--stdout", action="store_true", help="soc: log to the terminal")
     ap.add_argument("--no-mcu", action="store_true", help="soc --once: don't flash MCU firmware")
+    ap.add_argument("--no-kalico", action="store_true", help="soc --once: don't update Kalico")
     a = ap.parse_args(argv)
     if a.where == "pi":
         return PiUpdater(config_dir=a.config_dir, repo=a.repo).run(restart=not a.no_restart)
@@ -822,6 +867,8 @@ def main(argv=None):
                    clone=Path(a.repo) if a.repo else SOC_CLONE, **kw)
     if a.once or a.config_dir:
         ok = u.apply(restart=not a.no_restart, loopscript=not a.no_loopscript and not a.config_dir)
+        if ok and not a.config_dir and not a.no_kalico:
+            u.sync_kalico()
         if ok and not a.config_dir and not a.no_mcu:
             u.sync_mcu()
         return 0
