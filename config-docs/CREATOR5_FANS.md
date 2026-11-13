@@ -26,7 +26,7 @@ The higher of two speeds:
   `motor_watts` (30 W) while X, Y or Z is powered, reaching 100% at `full_watts` (120 W). At least
   `min_speed` (30%) while there is any load, and `heating_min` (50%) while any hotend has a target.
 
-Once the load is gone it keeps its speed for `runon` (120 s), then stops.
+Once the load is gone it keeps its speed, at most `runon_speed` (80%), for `runon` (60 s), then stops.
 
 ## Settings
 
