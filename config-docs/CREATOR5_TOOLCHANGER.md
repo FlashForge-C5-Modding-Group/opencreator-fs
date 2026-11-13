@@ -643,7 +643,8 @@ as the loading or cooldown operating temperature.
 AFC's "load lane" button sends `CHANGE_TOOL LANE=extruderN` in Fluidd, and
 `TOOL_LOAD LANE=extruderN` in GrumpyScreen's AFC panel. Outside a print, both
 macros (in `printer.afc-standalone.cfg`) run `C5_LOAD_FILAMENT TOOL=N` instead,
-so the nozzle heats, purges at the bucket, cools and docks. `CHANGE_TOOL` passes
+so the nozzle heats, purges at the bucket, and asks whether filament came out
+(see below) before it cools and docks. `CHANGE_TOOL` passes
 `NEW_EXTRUDER_TEMP` as `TEMP` and `PURGE_LENGTH` as `LENGTH` when given. During a
 print or pause, they're AFC's own commands (`_AFC_CHANGE_TOOL`, `_AFC_TOOL_LOAD`).
 AFC's own `TOOL_LOAD` only picks the tool up, with no heating or purge.
@@ -656,9 +657,15 @@ with `C5_LOAD_FILAMENT TOOLS=0,2 TEMP0=220 TEMP2=255 LENGTH=20`. With explicit
 tool selection, `TEMP` sets a common temperature (default 220 C); `TEMP0`
 through `TEMP3` override it per nozzle. Explicit loading temperatures must be
 finite and within 150–300 C. Each requested tool is selected, heated,
-has its calibrated automatic nozzle Z offset applied, purged up to 80 mm
-over the rear-right bucket, cooled at the wiper, turned
-off, and docked before proceeding to the next. Insert filament into every
+has its calibrated automatic nozzle Z offset applied and purged up to 80 mm
+over the rear-right bucket. A "Filament loaded?" prompt then asks whether
+filament came out of the nozzle: **No, purge again** reheats if needed and
+purges the same length again, then asks again; **Yes** cools the tool at the
+wiper, turns it off and docks it, then starts the next requested tool. Every
+load outside a pause asks, whether it came from `C5_LOAD_FILAMENT`, AFC's load
+buttons, GrumpyScreen's Load or the load menu. The remaining tools wait in
+`_C5_LOAD_QUEUE`; a single-tool load clears it. Closing the prompt without
+answering leaves the tool hot and attached. Insert filament into every
 requested tool before running the multi-tool command. If a requested tool is
 already mounted, it is handled first. A mounted tool not in the requested
 list must be safely cooled and docked first; the macro will not switch it
