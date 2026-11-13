@@ -28,6 +28,13 @@ The higher of two speeds:
 
 Once the load is gone it keeps its speed, at most `runon_speed` (80%), for `runon` (60 s), then stops.
 
+## During calibration
+
+Input shaper calibration (`CALIBRATE_INPUT_SHAPER`, `CALIBRATE_INPUT_SHAPER_GRAPH`) and VFA calibration
+(`STEPPER_RESONANCE_FACTORY_CALIBRATE`, which `VFA_COMPENSATION` and the stock VFA button run) hold both fans
+at 50%, so their vibration stays the same through the measurement. `_FANS_HOLD SPEED=…` and `_FANS_RELEASE`
+do it by hand. A calibration stopped part way leaves the hold on until the next print start or restart.
+
 ## Settings
 
 The numbers are variables of `_PCB_FAN` and `_PSU_FAN`. Change them in `printer.base.cfg`, or try them
