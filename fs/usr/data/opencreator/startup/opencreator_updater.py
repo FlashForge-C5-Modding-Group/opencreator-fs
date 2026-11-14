@@ -36,7 +36,7 @@ SOC_CLONE = OCDIR / "opencreator-fs"
 SOC_KLIPPER = OCDIR / "klipper" / "klipper"
 FS_GIT_URL = "https://github.com/FlashForge-C5-Modding-Group/opencreator-fs.git"
 LOOPSCRIPT_PARTS = ("startup", "firmware", "tunneled", "moonraker", "fluidd", "plugin-manager",
-                    "mcu-flash")
+                    "mcu-flash", "rvmcu")
 NGINX_CONF_D = Path("/usr/data/nginx/conf.d")
 GRUMPYSCREEN_DIR = Path("/usr/data/grumpyscreen")
 FIRMWARE_EXE = Path("/usr/prog/PROGRAM/software/firmwareExe")
@@ -494,6 +494,8 @@ class SocUpdater(Updater):
                 self._chmod(new / "oc-plugin", 0o755)
             elif part == "mcu-flash":
                 self._chmod(new / "oc-mcu-flash", 0o755)
+            elif part == "rvmcu":
+                self._chmod(new / "rvmcu", 0o755)
             elif part == "tunneled":
                 # executable means tunnel mode: keep whichever mode is set
                 tunnel = (dest / "tunneled.sh").is_file() and os.access(str(dest / "tunneled.sh"), os.X_OK)

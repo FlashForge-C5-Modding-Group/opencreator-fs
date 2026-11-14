@@ -3,3 +3,6 @@ mcu-firmware/*.hex -text
 
 # Kernel modules: loaded as built, SHA256SUMS covers the exact bytes
 fs/usr/data/opencreator/startup/usb-ethernet/*.ko binary
+
+# X2600 RISC-V core image and its host tool
+fs/usr/data/opencreator/rvmcu/* binary
