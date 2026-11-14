@@ -34,7 +34,9 @@ Once the load is gone it keeps its speed, at most `runon_speed` (80%), for `runo
 
 Input shaper calibration (`CALIBRATE_INPUT_SHAPER`, `CALIBRATE_INPUT_SHAPER_GRAPH`) and VFA calibration
 (`STEPPER_RESONANCE_FACTORY_CALIBRATE`, which `VFA_COMPENSATION` and the stock VFA button run) hold both fans
-at 50% (`_FANS_HOLD`, then `_FANS_RELEASE`), so their vibration stays the same through the measurement. A
+at 50% (`_FANS_HOLD`, then `_FANS_RELEASE`), so their vibration stays the same through the measurement.
+Ripple calibration (`RIPPLE_CALIBRATE`, `MCLIB_RIPPLE_CALIBRATE`, `MCLIB_RIPPLE_MEASURE`) holds them the same
+way (see `CREATOR5_RIPPLE.md`). A
 calibration stopped part way leaves the hold on until the next print start or restart.
 
 ## Commands and settings

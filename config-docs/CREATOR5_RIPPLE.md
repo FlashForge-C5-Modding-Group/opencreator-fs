@@ -40,7 +40,8 @@ frequency (Hz), forward amplitude (A) and phase (rad), reverse amplitude and pha
   correction for every speed (`DIR=1` is the motor's forward), `AMP=0` in both directions clears it.
 
 `[mclib_ripple]` options: `accel_chip` (lis2dw), `center` (130, 130), `accel` (5000) for the test moves,
-`speeds` (8, 15, 30, 60, 120), `probe` (0.03 A, the test current) and `cruise_time` (0.5 s measured per move).
+`speeds` (8, 15, 30, 60, 120), `probe` (0.015 A, the test current), `cruise_time` (0.5 s measured per move),
+`fan_hold` (0.5) and `fan_settle` (3 s).
 
 ## How it calibrates
 
@@ -48,13 +49,22 @@ The vibration power at a harmonic is a quadratic in the correction c (a complex 
 P(c) = P0 + 2·Re(w·c) + g·|c|². Measuring at c, c+δ, c−δ and c+iδ gives g and w, and the minimum is at
 c − conj(w)/g. That is checked with one more move and kept only if the vibration went down, then repeated with
 half the step. Forward and reverse are measured on the same out-and-back move. Above the fastest calibrated
-speed the correction fades out by 1.5 times that frequency, as nothing was measured there.
+speed the correction fades out by 1.1 times that frequency, and below the slowest to nothing at half its
+frequency, as nothing was measured there.
 
 ## Stock VFA damping
 
-VFA (`VFA_COMPENSATION`) corrects harmonics 1, 2 and 4, tuned at the frame's resonance. A harmonic that has a
-ripple table skips the VFA value, both at startup and when a print restores it, and ripple calibration turns
-VFA off for the harmonics it calibrates. VFA's harmonic 1 still applies.
+VFA (`VFA_COMPENSATION`) corrects harmonics 1, 2 and 4, tuned near the frame's resonance, so mostly at higher
+speeds. The mainboard hands over by speed: where a ripple table covers the motor's current speed it replaces
+the VFA value for that harmonic, outside the table VFA applies, and in between (the fade zones) the two are
+blended. So both can stay calibrated, and VFA keeps working above the fastest ripple point.
+
+## Board fans
+
+Both calibration and `MCLIB_RIPPLE_MEASURE` hold the mainboard and power supply fans at `fan_hold` (50%), and
+wait `fan_settle` (3 s) for them to get there, so their vibration stays the same through the measurement.
+Otherwise the fans speed up as the mainboard warms during the test, which shows up in the measurement and
+throws the calibration off. A hold from `_FANS_HOLD` (as `RIPPLE_CALIBRATE` sets) is kept afterwards.
 
 ## Needs
 
@@ -63,17 +73,31 @@ Mainboard firmware with `mclib_set_ripple` (Kalico `phase-stepping` branch); old
 
 ## Measured
 
-Creator 5 Pro, toolhead accelerometer, RMS vibration in 10–100 / 100–300 / 300–800 Hz, against the firmware
-before step interpolation and ripple correction:
+Creator 5 Pro, toolhead accelerometer, board fans held at 50%, RMS vibration in 10–100 / 100–300 / 300–800 Hz:
+step interpolation plus ripple correction (average of three sessions) against the firmware before both.
 
 | Move | Change |
 |---|---|
-| Y 5 mm/s | −35% / −42% / −54% |
-| Y 10 mm/s | −41% / −39% / −57% |
-| Y 20 mm/s | −44% / −43% / −33% |
-| Y 80 mm/s | −5% / −36% / −16% |
-| X 5 mm/s | −34% / −18% / −15% |
-| X 20 mm/s | −10% / −36% / −14% |
-| X 40 mm/s | −4% / −16% / −7% |
-| Diagonal 20 mm/s | −31% / −64% / −14% |
-| Slow accel ramps | −13 to −19% / −2 to −10% / −12 to −14% |
+| Y 5 mm/s | −24% / −39% / −58% |
+| Y 10 mm/s | −37% / −38% / −52% |
+| Y 20 mm/s | −42% / −54% / −45% |
+| Y 80 mm/s | −4% / −30% / +1% |
+| X 5 mm/s | −40% / −15% / −17% |
+| X 10 mm/s | −34% / +18% / −4% |
+| X 20 mm/s | −23% / −42% / −36% |
+| X 40 mm/s | +2% / −27% / −4% |
+| X 80 mm/s | −12% / −22% / −9% |
+| X 150 mm/s | −11% / −6% / −4% |
+| Diagonal 5 mm/s | −34% / −29% / −16% |
+| Diagonal 20 mm/s | −32% / −62% / −14% |
+| Diagonal 80 mm/s | +2% / −14% / −13% |
+| Slow speed changes | −2 to −17% / −6 to −10% / −5 to −14% |
+
+The same test 15 minutes apart moves single numbers by up to about ±30%.
+
+## Safety limits
+
+Calibration caps a correction at 0.06 A (good ones stay under 0.05 A) and `ripple_*` values over 0.1 A are a
+config error, as too much current at a high harmonic grinds the motor. A point is only kept if it takes at least
+20% off the vibration, a fit is only used if the test corrections clearly moved it, and if nothing improved the
+previous tables are put back and nothing is saved.
