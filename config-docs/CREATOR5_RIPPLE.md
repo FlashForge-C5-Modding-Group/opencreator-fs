@@ -9,6 +9,9 @@ Ripple correction feeds a small opposing current to each motor at those harmonic
 with speed, so each harmonic has a table of corrections at several speeds, and the mainboard interpolates
 between them from the step rate.
 
+Inspired by Prusa Research's [phase stepping](https://blog.prusa3d.com/phase-stepping-how-we-busted-vibrations-and-improved-print-quality-on-the-xl-printer-with-just-a-firmware-update_94793)
+(per-motor correction calibrated with the toolhead accelerometer); no Prusa code is used.
+
 ## Calibrating
 
 ```
