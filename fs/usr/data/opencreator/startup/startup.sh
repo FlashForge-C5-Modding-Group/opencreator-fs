@@ -40,3 +40,10 @@ for script in $(ls "$TARGET_DIR"/*.sh 2>/dev/null | sort); do
         ( echo "=== Executed via sh ($EXEC_TYPE) ==="; sh "$script" ) > "$log_file" 2>&1 &
     fi
 done
+
+# Plugins' startup items (opencreator-plugin.json "startup"), after OpenCreator's own scripts
+PLUGINS=/usr/data/opencreator/plugin-manager/oc-plugin
+if [ -f "$PLUGINS" ]; then
+    log_launcher "Starting plugin startup items"
+    sh "$PLUGINS" boot > /tmp/oc-plugin-boot.log 2>&1 &
+fi

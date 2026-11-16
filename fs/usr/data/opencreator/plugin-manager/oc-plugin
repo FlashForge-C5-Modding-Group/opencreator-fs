@@ -1,5 +1,6 @@
 #!/bin/sh
 # OpenCreator plugin manager: oc-plugin list | install URL | update [ID] | remove ID | enable ID | disable ID | sync
+#   start|stop|restart|status [ID [ITEM]] | boot
 HERE=$(cd "$(dirname "$0")" && pwd)
 export PATH=$PATH:/opt/bin
 for py in /usr/data/python-hf/bin/python3 /usr/data/opencreator/klipper/klippy-env/bin/python python3; do

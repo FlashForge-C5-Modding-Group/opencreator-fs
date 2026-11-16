@@ -7,9 +7,11 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.request
 
 MANIFEST = "opencreator-plugin.json"
@@ -89,6 +91,10 @@ class Paths:
         self.klipper_cfg = os.path.join(self.config, "plugins")
         self.moonraker_cfg = os.path.join(self.config, "plugins", "moonraker")
         self.state = os.path.join(self.plugins, "state.json")
+        # a plugin's own files that survive updates and reinstalls, and the startup items' pid files
+        self.data = os.path.join(self.plugins, ".data")
+        self.run = os.path.join(self.plugins, ".run")
+        self.logs = env("OC_PLUGIN_LOGS") or ("/tmp" if soc else os.path.join(self.plugins, ".logs"))
 
 
 # ---- manifests ---------------------------------------------------------------
@@ -164,6 +170,32 @@ def load_manifest(root):
     services = m.setdefault("restart", [])
     if not isinstance(services, list) or not set(services) <= {"klipper", "moonraker"}:
         raise PluginError("restart must list klipper and/or moonraker")
+    items = m.setdefault("startup", [])
+    if not isinstance(items, list):
+        raise PluginError("startup must be a list")
+    names = set()
+    for item in items:
+        if not isinstance(item, dict):
+            raise PluginError("each startup item must be an object")
+        name = item.get("name")
+        if not isinstance(name, str) or not ID_RE.match(name) or name in names:
+            raise PluginError("startup item names are unique, 2-41 lowercase letters, digits, - or _")
+        names.add(name)
+        _inside(root, item.get("exec"), "startup %s exec" % name)
+        item.setdefault("type", "service")
+        if item["type"] not in ("service", "once"):
+            raise PluginError("startup %s: type is service or once" % name)
+        args = item.setdefault("args", [])
+        if not isinstance(args, list) or not all(isinstance(x, str) for x in args):
+            raise PluginError("startup %s: args must be a list of strings" % name)
+        delay = item.setdefault("delay", 0)
+        if not isinstance(delay, int) or not 0 <= delay <= 600:
+            raise PluginError("startup %s: delay is 0-600 seconds" % name)
+    scripts = m.setdefault("scripts", {})
+    if not isinstance(scripts, dict) or not set(scripts) <= {"install", "update", "uninstall"}:
+        raise PluginError("scripts can have install, update and uninstall")
+    for which, rel in scripts.items():
+        _inside(root, rel, "scripts %s" % which)
     return m
 
 
@@ -306,6 +338,10 @@ def _parts(m):
         out.append("Moonraker component %s" % ", ".join(names))
     if m.get("moonraker_config"):
         out.append("Moonraker config")
+    for item in m.get("startup", []):
+        out.append("%s %s" % ("service" if item["type"] == "service" else "boot task", item["name"]))
+    if m.get("scripts"):
+        out.append("%s script" % "/".join(sorted(m["scripts"])))
     return out
 
 
@@ -421,6 +457,136 @@ def sync(p, klipper=True, moonraker=True):
     return problems
 
 
+# ---- install scripts and startup items -------------------------------------------
+#
+# Both run with the plugin folder as the working directory and these in the environment:
+#   OC_PLUGIN_ID, OC_PLUGIN_DIR, OC_PLUGIN_DATA (kept across updates and reinstalls),
+#   OC_CONFIG_DIR, OC_KLIPPER_DIR, OC_MOONRAKER_URL, and /opt/bin on the PATH.
+
+def plugin_env(p, m, root):
+    env = dict(os.environ)
+    data = os.path.join(p.data, m["id"])
+    os.makedirs(data, exist_ok=True)
+    env.update(OC_PLUGIN_ID=m["id"], OC_PLUGIN_DIR=root, OC_PLUGIN_DATA=data, OC_CONFIG_DIR=p.config,
+               OC_KLIPPER_DIR=p.klipper, OC_MOONRAKER_URL=p.url, PATH=env.get("PATH", "/usr/bin:/bin") + ":/opt/bin")
+    return env
+
+
+def _command(root, rel, args=()):
+    path = os.path.join(root, rel)
+    return (["sh", path] if path.endswith(".sh") or not os.access(path, os.X_OK) else [path]) + list(args)
+
+
+def run_script(p, m, root, which, required=True):
+    """Run the plugin's install / update / uninstall script. True when there is none or it worked."""
+    rel = m.get("scripts", {}).get(which)
+    if not rel:
+        return True
+    print("Running %s script" % which)
+    try:
+        r = subprocess.run(_command(root, rel), cwd=root, env=plugin_env(p, m, root), timeout=900,
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+    except subprocess.TimeoutExpired:
+        msg = "%s script took longer than 15 minutes" % which
+    else:
+        for line in r.stdout.splitlines():
+            print("  " + line)
+        if r.returncode == 0:
+            return True
+        msg = "%s script failed (exit %d)" % (which, r.returncode)
+    if required:
+        raise PluginError(msg)
+    print("warning: " + msg)
+    return False
+
+
+def _pidfile(p, pid, name):
+    return os.path.join(p.run, "%s.%s.pid" % (pid, name))
+
+
+def _marker(pid, name):
+    return "oc-plugin:%s:%s" % (pid, name)
+
+
+def item_pid(p, pid, name):
+    """The running item's process (group) id, or None. Checks the process is still ours, not a reused pid."""
+    try:
+        with open(_pidfile(p, pid, name)) as f:
+            proc = int(f.read().strip())
+        with open("/proc/%d/cmdline" % proc, "rb") as f:
+            if _marker(pid, name).encode() in f.read():
+                return proc
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+# The shell that runs a startup item: a service is started again 5 s after it exits (up to a minute
+# apart if it keeps failing quickly); a boot task runs once. $0 carries the marker item_pid() looks for.
+RUNNER = r"""
+sleep "$OC_ITEM_DELAY"
+wait=5
+while true; do
+    echo "=== $(date) starting: $*"
+    start=$(date +%s)
+    "$@"
+    code=$?
+    [ "$OC_ITEM_TYPE" = once ] && { echo "=== $(date) done (exit $code)"; exit "$code"; }
+    [ $(( $(date +%s) - start )) -gt 60 ] && wait=5
+    echo "=== $(date) exited ($code), starting again in $wait s"
+    sleep $wait
+    [ $wait -lt 60 ] && wait=$((wait * 2))
+done
+"""
+
+
+def start_items(p, m, root, only=None):
+    for item in m.get("startup", []):
+        if only and item["name"] != only:
+            continue
+        if item_pid(p, m["id"], item["name"]):
+            continue
+        os.makedirs(p.run, exist_ok=True)
+        os.makedirs(p.logs, exist_ok=True)
+        env = plugin_env(p, m, root)
+        env.update(OC_ITEM_TYPE=item["type"], OC_ITEM_DELAY=str(item["delay"]))
+        log = open(os.path.join(p.logs, "oc-plugin-%s-%s.log" % (m["id"], item["name"])), "ab")
+        proc = subprocess.Popen(["sh", "-c", RUNNER, _marker(m["id"], item["name"])] + _command(root, item["exec"], item["args"]),
+                                cwd=root, env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+                                start_new_session=True)
+        log.close()
+        _write(_pidfile(p, m["id"], item["name"]), "%d\n" % proc.pid)
+        print("Started %s %s" % (m["id"], item["name"]))
+
+
+def stop_items(p, pid, only=None):
+    if not os.path.isdir(p.run):
+        return
+    for fname in sorted(os.listdir(p.run)):
+        if not (fname.startswith(pid + ".") and fname.endswith(".pid")):
+            continue
+        name = fname[len(pid) + 1:-4]
+        if only and name != only:
+            continue
+        proc = item_pid(p, pid, name)
+        if proc:
+            for sig, wait in ((signal.SIGTERM, 5.0), (signal.SIGKILL, 2.0)):
+                try:
+                    os.killpg(proc, sig)
+                except OSError:
+                    break
+                end = time.time() + wait
+                while time.time() < end and item_pid(p, pid, name):
+                    time.sleep(0.2)
+                if not item_pid(p, pid, name):
+                    break
+            print("Stopped %s %s" % (pid, name))
+        try:
+            os.unlink(os.path.join(p.run, fname))
+        except OSError:
+            pass
+
+
 # ---- restarts ----------------------------------------------------------------
 
 def _api(p, path, method="GET"):
@@ -509,6 +675,11 @@ def cmd_install(p, a):
         os.rename(stage, dest)
     finally:
         shutil.rmtree(work, ignore_errors=True)
+    try:
+        run_script(p, load_manifest(dest), dest, "install")
+    except PluginError as e:   # a plugin whose install script failed isn't installed
+        shutil.rmtree(dest, ignore_errors=True)
+        raise PluginError("not installed: %s" % e)
     s = read_state(p)
     if m["id"] in s["disabled"]:
         s["disabled"].remove(m["id"])
@@ -527,6 +698,7 @@ def cmd_install(p, a):
         print("note: ZMOD plugin; its %s were not run (they expect ZMOD)" % ", ".join(scripts))
     if not a.no_restart:
         restart(p, services_for(m))
+    start_items(p, m, dest)
     return 0
 
 
@@ -543,6 +715,10 @@ def cmd_update(p, a):
             m = load_manifest(root)
             print("Updated %s to %s" % (m["id"], m["version"]))
             services |= services_for(m)
+            stop_items(p, m["id"])
+            run_script(p, m, root, "update", required=False)
+            if m["id"] not in read_state(p)["disabled"]:
+                start_items(p, m, root)
         else:
             print("%s is up to date" % os.path.basename(root))
     for msg in sync(p):
@@ -554,11 +730,16 @@ def cmd_update(p, a):
 
 def cmd_remove(p, a):
     root = find(p, a.id)
+    stop_items(p, a.id)
     try:
-        services = services_for(load_manifest(root))
+        m = load_manifest(root)
+        services = services_for(m)
+        run_script(p, m, root, "uninstall", required=False)
     except PluginError:
         services = {"klipper", "moonraker"}
     shutil.rmtree(root)
+    if not a.keep_data:
+        shutil.rmtree(os.path.join(p.data, a.id), ignore_errors=True)
     s = read_state(p)
     if a.id in s["disabled"]:
         s["disabled"].remove(a.id)
@@ -583,7 +764,64 @@ def cmd_enable(p, a, enable=True):
     print("%s %s" % ("Enabled" if enable else "Disabled", m["id"]))
     if not a.no_restart:
         restart(p, services_for(m))
+    if enable:
+        start_items(p, m, find(p, a.id))
+    else:
+        stop_items(p, m["id"])
     return 0
+
+
+def _with_items(p, a):
+    """(id, root, manifest) for a.id, or every enabled plugin with startup items."""
+    disabled = set(read_state(p)["disabled"])
+    out = []
+    for root in ([find(p, a.id)] if a.id else installed(p)):
+        try:
+            m = load_manifest(root)
+        except PluginError as e:
+            print("warning: %s: %s" % (os.path.basename(root), e))
+            continue
+        if m.get("startup") and (a.id or m["id"] not in disabled):
+            out.append((m["id"], root, m))
+    return out
+
+
+def cmd_start(p, a):
+    for pid, root, m in _with_items(p, a):
+        start_items(p, m, root, a.item)
+    return 0
+
+
+def cmd_stop(p, a):
+    for pid, root, m in _with_items(p, a):
+        stop_items(p, pid, a.item)
+    return 0
+
+
+def cmd_restart(p, a):
+    for pid, root, m in _with_items(p, a):
+        stop_items(p, pid, a.item)
+        start_items(p, m, root, a.item)
+    return 0
+
+
+def cmd_status(p, a):
+    rows = _with_items(p, a)
+    if not rows:
+        print("No plugin has startup items")
+    for pid, root, m in rows:
+        for item in m["startup"]:
+            proc = item_pid(p, pid, item["name"])
+            print("%-20s %-12s %-8s %s  log: %s" % (pid, item["name"], item["type"],
+                                                    "running (%d)" % proc if proc else "stopped",
+                                                    os.path.join(p.logs, "oc-plugin-%s-%s.log" % (pid, item["name"]))))
+    return 0
+
+
+def cmd_boot(p, a):
+    """At boot (startup.sh): start every enabled plugin's startup items."""
+    a.id, a.item = None, None
+    return cmd_start(p, a)
 
 
 def cmd_sync(p, a):
@@ -609,12 +847,21 @@ def main(argv=None):
         e.add_argument("id")
     s = sub.add_parser("sync", help="redo the links and includes (run at every Klippy/Moonraker start)")
     s.add_argument("--only", choices=("klipper", "moonraker"))
+    for name, text in (("start", "start startup items"), ("stop", "stop startup items"),
+                       ("restart", "restart startup items"), ("status", "show startup items")):
+        c = sub.add_parser(name, help="%s (one plugin, or all enabled ones)" % text)
+        c.add_argument("id", nargs="?")
+        if name != "status":
+            c.add_argument("item", nargs="?", help="only this startup item")
+    sub.add_parser("boot", help="start every enabled plugin's startup items (run by startup.sh at boot)")
+    r.add_argument("--keep-data", action="store_true", help="keep the plugin's data folder")
     for parser in (i, u, r) + tuple(sub.choices[n] for n in ("enable", "disable")):
         parser.add_argument("--no-restart", action="store_true", help="don't restart Klipper/Moonraker")
     a = ap.parse_args(argv)
     p = Paths()
     cmds = {"list": cmd_list, "install": cmd_install, "update": cmd_update, "remove": cmd_remove,
-            "enable": cmd_enable, "disable": lambda p, a: cmd_enable(p, a, False), "sync": cmd_sync}
+            "enable": cmd_enable, "disable": lambda p, a: cmd_enable(p, a, False), "sync": cmd_sync,
+            "start": cmd_start, "stop": cmd_stop, "restart": cmd_restart, "status": cmd_status, "boot": cmd_boot}
     if a.cmd not in cmds:
         ap.print_help()
         return 2
