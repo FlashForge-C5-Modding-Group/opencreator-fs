@@ -1,7 +1,17 @@
 #!/bin/sh
 # OpenCreator plugin manager: oc-plugin list | install URL | update [ID] | remove ID | enable ID | disable ID | sync
 #   start|stop|restart|status [ID [ITEM]] | boot
-HERE=$(cd "$(dirname "$0")" && pwd)
+# $0 may be a symlink (e.g. /opt/bin/oc-plugin); resolve to the real script so
+# HERE is the directory that actually contains oc_plugin.py.
+SELF=$0
+while [ -L "$SELF" ]; do
+    LINK=$(readlink "$SELF")
+    case $LINK in
+        /*) SELF=$LINK ;;
+        *)  SELF=$(dirname "$SELF")/$LINK ;;
+    esac
+done
+HERE=$(cd "$(dirname "$SELF")" && pwd)
 export PATH=$PATH:/opt/bin
 for py in /usr/data/python-hf/bin/python3 /usr/data/opencreator/klipper/klippy-env/bin/python python3; do
     if command -v "$py" >/dev/null 2>&1; then
