@@ -1,0 +1,8 @@
+{
+  "id": "orca-filament-profiles",
+  "name": "Orca Filament Profiles",
+  "version": "1.0.0",
+  "description": "Publish configured OrcaSlicer filament preset IDs for AFC lanes.",
+  "klippy_extras": ["oc_orca_filament_profiles.py"],
+  "klipper_config": "orca-filament-profiles.cfg"
+}

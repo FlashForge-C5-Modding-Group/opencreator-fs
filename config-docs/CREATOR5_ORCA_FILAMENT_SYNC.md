@@ -42,3 +42,7 @@ database updates in a background worker so Moonraker
 HTTP requests do not interrupt MCU timing. It republishes at Klipper startup
 and after AFC reconnects to Moonraker. Orca matches material families, but
 may choose a generic preset rather than a custom brand-specific profile.
+
+With OrcaSlicer 2.5, the optional
+[Orca Filament Profiles plugin](../plugins/orca-filament-profiles/README.md)
+lets you set which preset ID AFC should publish for each material label.

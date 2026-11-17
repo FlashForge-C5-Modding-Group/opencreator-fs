@@ -85,6 +85,25 @@ class PluginTest(unittest.TestCase):
         # Moonraker's include must still match a file
         self.assertTrue((t / "config" / "plugins" / "moonraker" / oc.KEEP).is_file())
 
+    def test_bundled_orca_plugin_relinks_and_keeps_user_mapping(self):
+        plugin_id = "orca-filament-profiles"
+        source = ROOT / "plugins" / plugin_id
+        self.assertEqual(self.run_cli("install", str(source), "--no-restart"), 0)
+        installed = self.tmp / "plugins" / plugin_id
+        module = "oc_orca_filament_profiles.py"
+        config = installed / (plugin_id + ".cfg")
+        link = self.tmp / "klipper" / "klippy" / "plugins" / module
+        self.assertEqual(link.resolve(strict=True), installed / module)
+        config_link = self.tmp / "config" / "plugins" / config.name
+        self.assertEqual(config_link.resolve(strict=True), config)
+
+        custom = "[oc_orca_filament_profiles]\nfilament_ids:\n    PLA: OFMkAW6r\n"
+        config.write_text(custom)
+        link.unlink()
+        self.assertEqual(self.run_cli("sync", "--only", "klipper"), 0)
+        self.assertEqual(link.resolve(strict=True), installed / module)
+        self.assertEqual(config_link.read_text(), custom)
+
     def test_refuses_name_of_builtin_module(self):
         other = self.tmp / "clash"
         self.make_plugin(other, pid="clash", module="probe.py")
