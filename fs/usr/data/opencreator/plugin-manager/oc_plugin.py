@@ -1023,6 +1023,7 @@ def cmd_search(p, a):
              if term in " ".join(str(e.get(k, "")) for k in ("id", "name", "description", "author")).lower()]
     if not found:
         print("Nothing in the catalog matches %r" % a.term if term else "The plugin catalog is empty")
+    w = max([20] + [len(e["id"]) + 1 for e in found])
     for official, heading in ((True, "Official"), (False, "Unofficial (not made or checked by OpenCreator)")):
         group = [e for e in found if e["official"] == official]
         if not group:
@@ -1032,10 +1033,10 @@ def cmd_search(p, a):
             problems = compat_problems(p, e["requires"], warn=False)
             status = ("installed" if e["id"] in have else
                       "incompatible: " + "; ".join(problems) if problems else "")
-            print("%-20s %-32s %s" % (e["id"], e.get("name", e["id"]), status))
+            print("%-*s %-32s %s" % (w, e["id"], e.get("name", e["id"]), status))
             for key in ("description", "url", "note"):
                 if e.get(key):
-                    print("%-20s %s" % ("", e[key]))
+                    print("%-*s %s" % (w, "", e[key]))
     if found:
         print("\nInstall one with: oc-plugin install <id>")
     return 0
