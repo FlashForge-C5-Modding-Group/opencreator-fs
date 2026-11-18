@@ -15,6 +15,19 @@ command -v git > /dev/null || die "git not found (Entware)"
 [ -x /usr/data/opencreator/tunneled/tunneled.sh ] ||
     echo "oc-tunneled: this printer isn't in tunnel mode; its own updater already does this every minute"
 
+# No clock battery: until 02-fixtime.sh sets the clock from the network it says 1970, and git's
+# HTTPS refuses every certificate as not yet valid. tunneled.sh starts it at boot; start it here
+# when an older tunneled.sh didn't, and wait for it.
+if [ "$(date +%Y)" -lt 2025 ]; then
+    ps | grep -q "[0]2-fixtime" ||
+        (unset LD_LIBRARY_PATH; sh /usr/data/opencreator/startup/scripts/02-fixtime.sh)
+    echo "oc-tunneled: waiting for the clock to be set from the network"
+    i=0
+    while [ "$(date +%Y)" -lt 2025 ] && [ "$i" -lt 60 ]; do sleep 1; i=$((i + 1)); done
+    [ "$(date +%Y)" -ge 2025 ] ||
+        die "the clock still says $(date); check the network, or set it with date -s"
+fi
+
 if [ -d "$REPO/.git" ]; then
     branch=$(git -C "$REPO" rev-parse --abbrev-ref HEAD) || die "can't read $REPO"
     [ "$branch" != HEAD ] || branch=main
@@ -36,5 +49,6 @@ fi
 for py in /usr/data/python-hf/bin/python3 /opt/bin/python3; do
     [ -x "$py" ] && exec "$py" "$UPDATER" soc --tunneled --stdout
 done
-# The printer's own Python needs its library; git, run from it, doesn't mind.
-LD_LIBRARY_PATH=/usr/prog/Python-3.8.2/lib exec /usr/prog/Python-3.8.2/bin/python3 "$UPDATER" soc --tunneled --stdout
+# The printer's own Python (tunneled installs from before python-hf was installed there) needs
+# its own, OpenSSL's and libffi's library folders; git, run from it, doesn't mind.
+LD_LIBRARY_PATH=/usr/prog/Python-3.8.2/lib:/usr/prog/openssl-1.0.2d/lib:/usr/prog/libffi-3.4.4/lib exec /usr/prog/Python-3.8.2/bin/python3 "$UPDATER" soc --tunneled --stdout

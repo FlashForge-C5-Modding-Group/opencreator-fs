@@ -14,6 +14,9 @@ chmod 755 /usr/data/opencreator/tunneled/oc-tunneled 2>/dev/null
 
 sh "$SCRIPTS/05-entfix.sh"
 sh "$SCRIPTS/06-sftp.sh"
+# No clock battery: set the clock from the network (it keeps doing so in the background), so
+# git's HTTPS and plugins see the right date. Not with FlashForge's libraries.
+(unset LD_LIBRARY_PATH; sh "$SCRIPTS/02-fixtime.sh")
 sh "$SCRIPTS/30-camera.sh" &
 sh "$SCRIPTS/40-grumpyscreen.sh" &
 sh "$SCRIPTS/41-helixscreen.sh" &

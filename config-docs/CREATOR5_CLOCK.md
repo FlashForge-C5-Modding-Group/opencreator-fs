@@ -4,7 +4,9 @@ The Creator 5 has no hardware clock (no `/dev/rtc`), so every boot starts at
 1 January 1970 until something sets the time. Logs, print history and file
 dates from before that read 1970.
 
-LoopScript's `02-fixtime.sh` handles it in three steps:
+LoopScript's `02-fixtime.sh` handles it in three steps. `startup.sh` runs it on SoC installs and
+`tunneled/tunneled.sh` on tunneled ones (without FlashForge's `LD_LIBRARY_PATH`), where git's HTTPS for
+`oc-tunneled` and `oc-plugin` needs the right date:
 
 1. **At boot** the clock is put back to the last saved time
    (`/usr/data/opencreator/.clock`, seconds since 1970), so even with no

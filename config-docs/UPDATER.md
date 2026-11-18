@@ -147,7 +147,9 @@ Klipper and its config are on the SBC, which has its own updater, so configs, Ka
 firmware are left alone. New startup scripts run from the next boot. `tunneled.sh` links the
 command into `/opt/bin` at boot. Until a printer has booted once with it, run it as
 `sh /usr/data/opencreator/tunneled/oc-tunneled`. It needs Entware's git and runs with
-`python-hf`, Entware's Python or the printer's own Python 3.8.
+`python-hf` (the installer puts it on tunneled printers too), Entware's Python or the printer's own Python 3.8.
+Git's HTTPS needs the right date, so when the clock still says 1970 it starts `02-fixtime.sh` if it isn't
+running and waits up to a minute for the network time.
 
 ## Running it by hand
 

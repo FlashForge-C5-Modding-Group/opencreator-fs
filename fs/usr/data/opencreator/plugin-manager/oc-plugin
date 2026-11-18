@@ -19,9 +19,10 @@ for py in /usr/data/python-hf/bin/python3 /usr/data/opencreator/klipper/klippy-e
         exec "$py" "$HERE/oc_plugin.py" "$@"
     fi
 done
-# Tunneled printers have only the printer's own Python, which needs its library path.
+# Tunneled printers from before the installer put python-hf there have only the printer's own
+# Python, which needs its own, OpenSSL's and libffi's library folders.
 if [ -x /usr/prog/Python-3.8.2/bin/python3 ]; then
-    LD_LIBRARY_PATH=/usr/prog/Python-3.8.2/lib exec /usr/prog/Python-3.8.2/bin/python3 "$HERE/oc_plugin.py" "$@"
+    LD_LIBRARY_PATH=/usr/prog/Python-3.8.2/lib:/usr/prog/openssl-1.0.2d/lib:/usr/prog/libffi-3.4.4/lib exec /usr/prog/Python-3.8.2/bin/python3 "$HERE/oc_plugin.py" "$@"
 fi
 echo "oc-plugin: no Python found" >&2
 exit 1
