@@ -20,6 +20,12 @@ MODULE_RE = re.compile(r"^[a-z0-9_]+\.py$")
 KLIPPER_INCLUDE = "[include plugins/*.cfg]"
 MOONRAKER_INCLUDE = "[include plugins/moonraker/*.conf]"
 KEEP = "00-oc-plugins.conf"
+CATALOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "catalog.json")
+MODELS = {"Creator5": "Creator 5", "Creator5Pro": "Creator 5 Pro"}
+MODES = {"soc": "SoC", "sbc": "SBC"}
+STOCK_SCRIPTS = ("/usr/prog/app_startup.sh", "/usr/prog/PROGRAM/runFirmwareExe.sh")
+# Startup item logs are rotated past this size (on the printer they're in /tmp, which is RAM)
+LOG_MAX = 512 * 1024
 # The OC_PLUGINS dialog, written into the Klipper plugins folder at every sync. Plugin
 # ids can't start with "_", so no plugin's own config can take this name.
 MENU = "_oc-plugins.cfg"
@@ -95,6 +101,9 @@ class Paths:
         self.data = os.path.join(self.plugins, ".data")
         self.run = os.path.join(self.plugins, ".run")
         self.logs = env("OC_PLUGIN_LOGS") or ("/tmp" if soc else os.path.join(self.plugins, ".logs"))
+        self.mode = env("OC_INSTALL_MODE") or ("soc" if soc else "sbc")
+        self.model = env("OC_PRINTER_MODEL")
+        self.catalog = env("OC_PLUGIN_CATALOG") or CATALOG
 
 
 # ---- manifests ---------------------------------------------------------------
@@ -196,7 +205,91 @@ def load_manifest(root):
         raise PluginError("scripts can have install, update and uninstall")
     for which, rel in scripts.items():
         _inside(root, rel, "scripts %s" % which)
+    check_requires(m.setdefault("requires", {}))
     return m
+
+
+# ---- compatibility -------------------------------------------------------------
+
+def check_requires(req, what="requires"):
+    if not isinstance(req, dict) or not set(req) <= {"models", "modes"}:
+        raise PluginError("%s can have models and modes" % what)
+    for key, allowed in (("models", MODELS), ("modes", MODES)):
+        vals = req.get(key, [])
+        if not isinstance(vals, list) or (key in req and not vals) or not set(vals) <= set(allowed):
+            raise PluginError("%s %s must be a list of %s" % (what, key, ", ".join(allowed)))
+
+
+def printer_model(p):
+    """Creator5, Creator5Pro or None: from the stock boot script, as the installer reads it,
+    else from printer.model.cfg (SBC installs)."""
+    if p.model:
+        return p.model if p.model in MODELS else None
+    for path in STOCK_SCRIPTS:
+        try:
+            with open(path) as f:
+                found = re.search(r"^\s*MACHINE=([A-Za-z0-9]+)", f.read(), re.M)
+        except OSError:
+            continue
+        if found and found.group(1) in MODELS:
+            return found.group(1)
+    try:
+        with open(os.path.join(p.config, "printer.model.cfg")) as f:
+            text = f.read()
+    except OSError:
+        return None
+    if "unknown" in text:
+        return None
+    return "Creator5Pro" if "Creator 5 Pro" in text else "Creator5" if "Creator 5" in text else None
+
+
+def compat_problems(p, req, warn=True):
+    """Why a plugin with these requires can't run here; an unknown model only warns."""
+    out = []
+    models = req.get("models")
+    if models:
+        model = printer_model(p)
+        names = " or ".join(MODELS[x] for x in models)
+        if model is None:
+            if warn:
+                print("warning: couldn't tell the printer model; made for the %s" % names)
+        elif model not in models:
+            out.append("made for the %s, not the %s" % (names, MODELS[model]))
+    modes = req.get("modes")
+    if modes and p.mode not in modes:
+        out.append("made for %s installs, not %s" % (" or ".join(MODES[x] for x in modes), MODES[p.mode]))
+    return out
+
+
+# ---- catalog ---------------------------------------------------------------------
+
+def load_catalog(p):
+    try:
+        with open(p.catalog) as f:
+            c = json.load(f)
+    except FileNotFoundError:
+        raise PluginError("no plugin catalog at %s" % p.catalog)
+    except ValueError as e:
+        raise PluginError("the plugin catalog is not valid JSON: %s" % e)
+    entries = c.get("plugins") if isinstance(c, dict) else None
+    if not isinstance(entries, list):
+        raise PluginError("the plugin catalog has no plugins list")
+    for e in entries:
+        if not (isinstance(e, dict) and isinstance(e.get("id"), str) and ID_RE.match(e["id"])
+                and isinstance(e.get("url"), str) and e["url"]):
+            raise PluginError("plugin catalog entry %r needs an id and a url"
+                              % (e.get("id") if isinstance(e, dict) else e,))
+        check_requires(e.setdefault("requires", {}), "catalog %s requires" % e["id"])
+        if not isinstance(e.setdefault("official", False), bool):
+            raise PluginError("catalog %s: official is true or false" % e["id"])
+    return entries
+
+
+def catalog_entry(p, name):
+    for e in load_catalog(p):
+        if e["id"] == name:
+            return e
+    raise PluginError("%s isn't in the plugin catalog (oc-plugin search lists it)" % name)
 
 
 # ---- state -------------------------------------------------------------------
@@ -527,6 +620,10 @@ RUNNER = r"""
 sleep "$OC_ITEM_DELAY"
 wait=5
 while true; do
+    size=$(wc -c < "$OC_ITEM_LOG" 2>/dev/null)
+    if [ $((${size:-0} + 0)) -gt "$OC_LOG_MAX" ]; then
+        cp "$OC_ITEM_LOG" "$OC_ITEM_LOG.1" && : > "$OC_ITEM_LOG"
+    fi
     echo "=== $(date) starting: $*"
     start=$(date +%s)
     "$@"
@@ -540,6 +637,19 @@ done
 """
 
 
+def log_path(p, pid, name):
+    return os.path.join(p.logs, "oc-plugin-%s-%s.log" % (pid, name))
+
+
+def rotate_log(path):
+    """Keep one previous log (.1) once the current one passes LOG_MAX."""
+    try:
+        if os.path.getsize(path) > LOG_MAX:
+            os.replace(path, path + ".1")
+    except OSError:
+        pass
+
+
 def start_items(p, m, root, only=None):
     for item in m.get("startup", []):
         if only and item["name"] != only:
@@ -548,9 +658,12 @@ def start_items(p, m, root, only=None):
             continue
         os.makedirs(p.run, exist_ok=True)
         os.makedirs(p.logs, exist_ok=True)
+        path = log_path(p, m["id"], item["name"])
+        rotate_log(path)
         env = plugin_env(p, m, root)
-        env.update(OC_ITEM_TYPE=item["type"], OC_ITEM_DELAY=str(item["delay"]))
-        log = open(os.path.join(p.logs, "oc-plugin-%s-%s.log" % (m["id"], item["name"])), "ab")
+        env.update(OC_ITEM_TYPE=item["type"], OC_ITEM_DELAY=str(item["delay"]),
+                   OC_ITEM_LOG=path, OC_LOG_MAX=str(LOG_MAX))
+        log = open(path, "ab")
         proc = subprocess.Popen(["sh", "-c", RUNNER, _marker(m["id"], item["name"])] + _command(root, item["exec"], item["args"]),
                                 cwd=root, env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
                                 start_new_session=True)
@@ -648,16 +761,27 @@ def cmd_list(p, a):
             print("%-20s BROKEN  %s" % (os.path.basename(root), e))
             continue
         info = git_info(root)
-        print("%-20s %-10s %-9s %s%s" % (m["id"], m["version"], "disabled" if m["id"] in disabled else "enabled",
-                                         m["name"], "  [%s@%s]" % (info["branch"], info["commit"]) if info else ""))
+        problems = compat_problems(p, m["requires"], warn=False)
+        print("%-20s %-10s %-9s %s%s%s" % (m["id"], m["version"], "disabled" if m["id"] in disabled else "enabled",
+                                           m["name"], "  [%s@%s]" % (info["branch"], info["commit"]) if info else "",
+                                           "  (incompatible: %s)" % "; ".join(problems) if problems else ""))
     return 0
 
 
 def cmd_install(p, a):
+    src, ref = a.source, a.ref
+    entry = None
+    if not os.path.isdir(src) and ID_RE.match(src):
+        entry = catalog_entry(p, src)
+        src, ref = entry["url"], ref or entry.get("ref")
+        problems = compat_problems(p, entry["requires"])
+        if problems and not a.force:
+            raise PluginError("not installed: %s (--force installs it anyway)" % "; ".join(problems))
+        if not entry["official"]:
+            print("note: %s is unofficial: not made or checked by OpenCreator" % entry["id"])
     os.makedirs(p.plugins, exist_ok=True)
     work = tempfile.mkdtemp(dir=p.plugins, prefix=".install-")
     try:
-        src = a.source
         # named like the source: a ZMOD plugin's id is its repo name
         name = os.path.basename(src.rstrip("/\\"))
         name = (name[:-4] if name.endswith(".git") else name) or "plugin"
@@ -666,9 +790,12 @@ def cmd_install(p, a):
             shutil.copytree(src, stage, symlinks=True, ignore=shutil.ignore_patterns(".git"))
         else:
             # full history: Moonraker's update manager doesn't like shallow clones
-            args = ["clone"] + (["--branch", a.ref] if a.ref else []) + [src, stage]
+            args = ["clone"] + (["--branch", ref] if ref else []) + [src, stage]
             git(*args)
         m = load_manifest(stage)
+        problems = compat_problems(p, m["requires"], warn=entry is None)
+        if problems and not a.force:
+            raise PluginError("not installed: %s (--force installs it anyway)" % "; ".join(problems))
         dest = os.path.join(p.plugins, m["id"])
         if os.path.exists(dest):
             raise PluginError("%s is already installed; use oc-plugin update %s" % (m["id"], m["id"]))
@@ -712,7 +839,17 @@ def cmd_update(p, a):
         before = git("rev-parse", "HEAD", cwd=root)
         git("pull", "--ff-only", cwd=root)
         if git("rev-parse", "HEAD", cwd=root) != before:
-            m = load_manifest(root)
+            try:
+                m = load_manifest(root)
+                problems = compat_problems(p, m["requires"])
+                if problems and not a.force:
+                    raise PluginError("; ".join(problems))
+            except PluginError as e:
+                # the old version keeps running rather than a broken or incompatible new one
+                git("reset", "--hard", before, cwd=root)
+                print("%s: not updated (new version: %s); kept %s"
+                      % (os.path.basename(root), e, before[:7]))
+                continue
             print("Updated %s to %s" % (m["id"], m["version"]))
             services |= services_for(m)
             stop_items(p, m["id"])
@@ -814,7 +951,93 @@ def cmd_status(p, a):
             proc = item_pid(p, pid, item["name"])
             print("%-20s %-12s %-8s %s  log: %s" % (pid, item["name"], item["type"],
                                                     "running (%d)" % proc if proc else "stopped",
-                                                    os.path.join(p.logs, "oc-plugin-%s-%s.log" % (pid, item["name"]))))
+                                                    log_path(p, pid, item["name"])))
+    return 0
+
+
+def _tail(path, lines):
+    """The last lines of a log, reaching into the rotated .1 copy if the current one is short."""
+    text = b""
+    for part in (path + ".1", path):
+        try:
+            with open(part, "rb") as f:
+                text += f.read()
+        except OSError:
+            pass
+    return text.decode("utf-8", "replace").splitlines()[-lines:] if lines > 0 else []
+
+
+def cmd_logs(p, a):
+    root = find(p, a.id)
+    m = load_manifest(root)
+    items = [i for i in m["startup"] if not a.item or i["name"] == a.item]
+    if a.item and not items:
+        raise PluginError("%s has no startup item %s" % (m["id"], a.item))
+    if not items:
+        print("%s has no startup items, so it keeps no logs" % m["id"])
+        return 0
+    if a.follow and len(items) > 1:
+        raise PluginError("--follow needs one item: oc-plugin logs %s <%s>"
+                          % (m["id"], "|".join(i["name"] for i in items)))
+    for item in items:
+        path = log_path(p, m["id"], item["name"])
+        if len(items) > 1:
+            print("==> %s %s (%s) <==" % (m["id"], item["name"], path))
+        if not os.path.exists(path) and not os.path.exists(path + ".1"):
+            print("(no log yet: %s)" % path)
+            continue
+        for line in _tail(path, a.lines):
+            print(line)
+    if a.follow:
+        path = log_path(p, m["id"], items[0]["name"])
+        pos = os.path.getsize(path) if os.path.exists(path) else 0
+        try:
+            while True:
+                time.sleep(0.5)
+                try:
+                    size = os.path.getsize(path)
+                except OSError:
+                    continue
+                if size < pos:   # rotated or truncated
+                    pos = 0
+                if size > pos:
+                    with open(path, "rb") as f:
+                        f.seek(pos)
+                        sys.stdout.write(f.read().decode("utf-8", "replace"))
+                        sys.stdout.flush()
+                    pos = size
+        except KeyboardInterrupt:
+            pass
+    return 0
+
+
+def cmd_search(p, a):
+    term = (a.term or "").lower()
+    have = set()
+    for root in installed(p):
+        try:
+            have.add(load_manifest(root)["id"])
+        except PluginError:
+            have.add(os.path.basename(root))
+    found = [e for e in load_catalog(p)
+             if term in " ".join(str(e.get(k, "")) for k in ("id", "name", "description", "author")).lower()]
+    if not found:
+        print("Nothing in the catalog matches %r" % a.term if term else "The plugin catalog is empty")
+    for official, heading in ((True, "Official"), (False, "Unofficial (not made or checked by OpenCreator)")):
+        group = [e for e in found if e["official"] == official]
+        if not group:
+            continue
+        print("\n%s\n%s" % (heading, "-" * len(heading)))
+        for e in group:
+            problems = compat_problems(p, e["requires"], warn=False)
+            status = ("installed" if e["id"] in have else
+                      "incompatible: " + "; ".join(problems) if problems else "")
+            print("%-20s %-32s %s" % (e["id"], e.get("name", e["id"]), status))
+            for key in ("description", "url", "note"):
+                if e.get(key):
+                    print("%-20s %s" % ("", e[key]))
+    if found:
+        print("\nInstall one with: oc-plugin install <id>")
     return 0
 
 
@@ -835,11 +1058,21 @@ def main(argv=None):
     ap = argparse.ArgumentParser(prog="oc-plugin", description="Install and manage OpenCreator plugins.")
     sub = ap.add_subparsers(dest="cmd")
     sub.add_parser("list", help="show installed plugins")
-    i = sub.add_parser("install", help="install from a git URL or a local folder")
-    i.add_argument("source")
+    i = sub.add_parser("install", help="install from the catalog, a git URL or a local folder")
+    i.add_argument("source", help="catalog id (see search), git URL or folder")
     i.add_argument("--ref", help="branch or tag to install")
     u = sub.add_parser("update", help="pull the newest version of one or all plugins")
     u.add_argument("id", nargs="?")
+    for parser in (i, u):
+        parser.add_argument("--force", action="store_true",
+                            help="install even if the plugin says it isn't made for this printer")
+    se = sub.add_parser("search", help="list the plugin catalog, or the entries matching a word")
+    se.add_argument("term", nargs="?")
+    lg = sub.add_parser("logs", help="show a plugin's startup item logs")
+    lg.add_argument("id")
+    lg.add_argument("item", nargs="?", help="only this startup item")
+    lg.add_argument("-n", "--lines", type=int, default=50, help="how many lines (default 50)")
+    lg.add_argument("-f", "--follow", action="store_true", help="keep printing new lines")
     r = sub.add_parser("remove", help="uninstall a plugin")
     r.add_argument("id")
     for name in ("enable", "disable"):
@@ -861,7 +1094,8 @@ def main(argv=None):
     p = Paths()
     cmds = {"list": cmd_list, "install": cmd_install, "update": cmd_update, "remove": cmd_remove,
             "enable": cmd_enable, "disable": lambda p, a: cmd_enable(p, a, False), "sync": cmd_sync,
-            "start": cmd_start, "stop": cmd_stop, "restart": cmd_restart, "status": cmd_status, "boot": cmd_boot}
+            "start": cmd_start, "stop": cmd_stop, "restart": cmd_restart, "status": cmd_status, "boot": cmd_boot,
+            "search": cmd_search, "logs": cmd_logs}
     if a.cmd not in cmds:
         ap.print_help()
         return 2

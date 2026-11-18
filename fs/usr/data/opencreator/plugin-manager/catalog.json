@@ -1,0 +1,31 @@
+{
+  "plugins": [
+    {
+      "id": "hello",
+      "name": "Hello OpenCreator",
+      "official": true,
+      "author": "OpenCreator",
+      "description": "Example plugin: a Klippy module, a macro and a Moonraker endpoint. The place to start when making a plugin.",
+      "url": "https://github.com/FlashForge-C5-Modding-Group/OpenCreator-Plugin-Example.git"
+    },
+    {
+      "id": "sep-ai",
+      "name": "Printer Buddy Lite",
+      "official": true,
+      "author": "Printer Buddy",
+      "description": "Print failure detection on the printer's own X2600 RISC-V core, with a web page on port 7180.",
+      "url": "https://github.com/FlashForge-C5-Modding-Group/printer-buddy-lite.git",
+      "requires": {"modes": ["soc"]}
+    },
+    {
+      "id": "octoeverywhere",
+      "name": "OctoEverywhere for OpenCreator",
+      "official": false,
+      "author": "KidCe",
+      "description": "OctoEverywhere remote access and cameras.",
+      "url": "https://github.com/KidCe/opencreator-octoeverywhere.git",
+      "requires": {"modes": ["soc"]},
+      "note": "After installing, run sh /usr/data/opencreator/plugins/octoeverywhere/install.sh and follow its README."
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 #!/bin/sh
-# OpenCreator plugin manager: oc-plugin list | install URL | update [ID] | remove ID | enable ID | disable ID | sync
+# OpenCreator plugin manager: oc-plugin list | search [WORD] | install ID|URL | update [ID] | remove ID
+#   enable ID | disable ID | sync | logs ID [ITEM]
 #   start|stop|restart|status [ID [ITEM]] | boot
 # $0 may be a symlink (e.g. /opt/bin/oc-plugin); resolve to the real script so
 # HERE is the directory that actually contains oc_plugin.py.

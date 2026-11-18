@@ -229,6 +229,125 @@ class PluginTest(unittest.TestCase):
         # a regular file, so pruning plugin links leaves it alone
         self.assertFalse((self.tmp / "config" / "plugins" / oc.MENU).is_symlink())
 
+    # ---- compatibility
+
+    def set_requires(self, root, req):
+        data = json.loads((root / oc.MANIFEST).read_text())
+        data["requires"] = req
+        (root / oc.MANIFEST).write_text(json.dumps(data))
+
+    def test_requires_refuses_the_wrong_model_unless_forced(self):
+        self.set_requires(self.src, {"models": ["Creator5Pro"]})
+        with mock.patch.dict(os.environ, {"OC_PRINTER_MODEL": "Creator5"}):
+            self.assertEqual(self.run_cli("install", str(self.src), "--no-restart"), 1)
+            self.assertFalse((self.tmp / "plugins" / "hello").exists())
+            self.assertEqual(self.run_cli("install", str(self.src), "--no-restart", "--force"), 0)
+        with mock.patch.dict(os.environ, {"OC_PRINTER_MODEL": "Creator5Pro"}):
+            self.run_cli("remove", "hello", "--no-restart")
+            self.assertEqual(self.run_cli("install", str(self.src), "--no-restart"), 0)
+
+    def test_requires_refuses_the_wrong_mode(self):
+        self.set_requires(self.src, {"modes": ["soc"]})
+        with mock.patch.dict(os.environ, {"OC_INSTALL_MODE": "sbc"}):
+            self.assertEqual(self.run_cli("install", str(self.src), "--no-restart"), 1)
+        with mock.patch.dict(os.environ, {"OC_INSTALL_MODE": "soc"}):
+            self.assertEqual(self.run_cli("install", str(self.src), "--no-restart"), 0)
+
+    def test_model_comes_from_printer_model_cfg(self):
+        p = oc.Paths()
+        for text, model in (("# Written at boot: Creator 5 Pro\n[include printer.pro.cfg]\n", "Creator5Pro"),
+                            ("# Written at boot: Creator 5 (no chamber heater)\n", "Creator5"),
+                            ("# Written at boot: model unknown, assumed Creator 5 Pro\n", None)):
+            write(self.tmp / "config" / "printer.model.cfg", text)
+            with mock.patch.object(oc, "STOCK_SCRIPTS", ()):
+                self.assertEqual(oc.printer_model(p), model)
+
+    def test_bad_requires_is_rejected(self):
+        for req in ({"models": ["Creator6"]}, {"modes": []}, {"cpu": ["x"]}, ["soc"]):
+            self.set_requires(self.src, req)
+            with self.assertRaises(oc.PluginError):
+                oc.load_manifest(str(self.src))
+
+    def test_update_keeps_the_old_version_when_the_new_one_is_incompatible(self):
+        g = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"]
+        subprocess.run(["git", "init", "-q", "-b", "main", str(self.src)], check=True)
+        subprocess.run(g + ["-C", str(self.src), "add", "-A"], check=True)
+        subprocess.run(g + ["-C", str(self.src), "commit", "-qm", "1"], check=True)
+        self.assertEqual(self.run_cli("install", "file://" + str(self.src), "--no-restart"), 0)
+        self.set_requires(self.src, {"modes": ["soc"]})
+        subprocess.run(g + ["-C", str(self.src), "commit", "-qam", "2"], check=True)
+        installed = self.tmp / "plugins" / "hello"
+        with mock.patch.dict(os.environ, {"OC_INSTALL_MODE": "sbc"}):
+            self.assertEqual(self.run_cli("update", "hello", "--no-restart"), 0)
+        self.assertEqual(oc.load_manifest(str(installed))["requires"], {})
+        (self.src / oc.MANIFEST).write_text("{broken")
+        subprocess.run(g + ["-C", str(self.src), "commit", "-qam", "3"], check=True)
+        self.assertEqual(self.run_cli("update", "hello", "--no-restart"), 0)
+        self.assertEqual(oc.load_manifest(str(installed))["requires"], {})
+
+    # ---- catalog
+
+    def write_catalog(self, entries):
+        path = self.tmp / "catalog.json"
+        path.write_text(json.dumps({"plugins": entries}))
+        return mock.patch.dict(os.environ, {"OC_PLUGIN_CATALOG": str(path)})
+
+    def test_install_by_catalog_id(self):
+        with self.write_catalog([{"id": "hello", "name": "Hello", "official": True, "url": str(self.src)}]):
+            self.assertEqual(self.run_cli("install", "hello", "--no-restart"), 0)
+            self.assertTrue((self.tmp / "plugins" / "hello").is_dir())
+            self.assertEqual(self.run_cli("install", "nope", "--no-restart"), 1)
+
+    def test_catalog_requires_is_checked_before_downloading(self):
+        entry = {"id": "hello", "url": "https://example.invalid/hello.git", "requires": {"modes": ["soc"]}}
+        with self.write_catalog([entry]), mock.patch.dict(os.environ, {"OC_INSTALL_MODE": "sbc"}), \
+                mock.patch.object(oc, "git", side_effect=AssertionError("cloned")):
+            self.assertEqual(self.run_cli("install", "hello", "--no-restart"), 1)
+
+    def test_search_splits_official_and_unofficial(self):
+        entries = [{"id": "hello", "name": "Hello", "official": True, "url": "u1", "description": "says hello"},
+                   {"id": "other", "name": "Other", "url": "u2", "note": "run its setup"}]
+        with self.write_catalog(entries), mock.patch("sys.stdout") as out:
+            self.assertEqual(self.run_cli("search"), 0)
+        text = "".join(c.args[0] for c in out.write.call_args_list)
+        self.assertLess(text.index("Official"), text.index("hello"))
+        self.assertLess(text.index("hello"), text.index("Unofficial"))
+        self.assertLess(text.index("Unofficial"), text.index("other"))
+        self.assertIn("run its setup", text)
+        with self.write_catalog(entries), mock.patch("sys.stdout") as out:
+            self.run_cli("search", "says")
+        self.assertNotIn("other", "".join(c.args[0] for c in out.write.call_args_list))
+
+    def test_shipped_catalog_is_valid(self):
+        with mock.patch.dict(os.environ, {"OC_PLUGIN_CATALOG": oc.CATALOG}):
+            entries = oc.load_catalog(oc.Paths())
+        ids = [e["id"] for e in entries]
+        self.assertEqual(len(ids), len(set(ids)))
+        self.assertTrue(any(e["official"] for e in entries))
+
+    # ---- logs
+
+    def test_logs_rotate_and_tail(self):
+        logs = self.tmp / "logs"
+        with mock.patch.dict(os.environ, {"OC_PLUGIN_LOGS": str(logs)}):
+            data = json.loads((self.src / oc.MANIFEST).read_text())
+            write(self.src / "run.sh", "sleep 1\n")
+            data["startup"] = [{"name": "svc", "exec": "run.sh"}]
+            (self.src / oc.MANIFEST).write_text(json.dumps(data))
+            with mock.patch.object(oc, "start_items"):
+                self.assertEqual(self.run_cli("install", str(self.src), "--no-restart"), 0)
+            path = oc.log_path(oc.Paths(), "hello", "svc")
+            write(pathlib.Path(path), "old\n" * (oc.LOG_MAX // 4 + 1))
+            oc.rotate_log(path)
+            self.assertTrue(os.path.exists(path + ".1"))
+            self.assertFalse(os.path.exists(path))
+            write(pathlib.Path(path), "new 1\nnew 2\n")
+            with mock.patch("sys.stdout") as out:
+                self.assertEqual(self.run_cli("logs", "hello", "-n", "3"), 0)
+            text = "".join(c.args[0] for c in out.write.call_args_list)
+            self.assertEqual(text.split("\n")[:3], ["old", "new 1", "new 2"])
+            self.assertEqual(self.run_cli("logs", "hello", "nope"), 1)
+
 
 class ExamplePluginTest(unittest.TestCase):
     def test_example_manifest_is_valid(self):

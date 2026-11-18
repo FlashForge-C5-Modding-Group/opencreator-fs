@@ -1,7 +1,8 @@
 # Login banner and prompt
 
 SSH and ADB logins get a coloured `user@host:folder#` prompt that follows the current folder. The OpenCreator logo is shown next to
-the uptime, IP address, free space in `/usr/data` and hostname, with the printer model (Creator 5 or
+the uptime, IP address, free space in `/usr/data`, hostname and the number of installed plugins (counted
+from `/usr/data/opencreator/plugins`, pointing to `oc-plugin`), with the printer model (Creator 5 or
 Creator 5 Pro, from the stock boot script) underneath.
 
 ## Files

@@ -27,12 +27,26 @@ case $machine in
     *) model="Creator 5 series" ;;
 esac
 
+plugins=
+if [ -f /usr/data/opencreator/plugin-manager/oc_plugin.py ]; then
+    n=0
+    for d in /usr/data/opencreator/plugins/*/; do
+        [ -f "$d/opencreator-plugin.json" ] || ls "$d"*.cfg "$d"en/*.cfg >/dev/null 2>&1 && n=$((n + 1))
+    done
+    case $n in
+        0) plugins="none installed (oc-plugin search)" ;;
+        1) plugins="1 installed (oc-plugin list)" ;;
+        *) plugins="$n installed (oc-plugin list)" ;;
+    esac
+fi
+
 I2="${B}OpenCreator${R}"
 I3="${D}-----------${R}"
 I4="${C}Uptime${R}   $uptime"
 I5="${C}IP${R}       $ips"
 I6="${C}Storage${R}  $storage in /usr/data"
 I7="${C}Host${R}     $(hostname)"
+[ -n "$plugins" ] && I8="${C}Plugins${R}  $plugins"
 
 echo
 i=1
