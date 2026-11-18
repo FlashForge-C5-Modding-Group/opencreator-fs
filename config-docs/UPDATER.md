@@ -132,11 +132,30 @@ when they differ.
   (`/usr/data/logs/oc-mcu-flash-pending.log`). A pending flash the installer left is kept.
 - `soc --once` flashes too, unless given `--no-mcu`.
 
+## Tunneled printers (`oc-tunneled`)
+
+A tunneled printer runs no Moonraker or updater on its SoC, so nothing pulls opencreator-fs there.
+Over SSH on the printer, `oc-tunneled`:
+
+1. pulls the opencreator-fs checkout (`/usr/data/opencreator/opencreator-fs`) to the newest
+   commit of its branch, the way Moonraker's update manager does on a SoC install;
+2. runs `opencreator_updater.py soc --tunneled`, which updates OpenCreator's own folders as
+   described [above](#opencreators-own-folders-soc), including `tunneled` and the bridge's
+   startup scripts.
+
+Klipper and its config are on the SBC, which has its own updater, so configs, Kalico and MCU
+firmware are left alone. New startup scripts run from the next boot. `tunneled.sh` links the
+command into `/opt/bin` at boot. Until a printer has booted once with it, run it as
+`sh /usr/data/opencreator/tunneled/oc-tunneled`. It needs Entware's git and runs with
+`python-hf`, Entware's Python or the printer's own Python 3.8.
+
 ## Running it by hand
 
 ```sh
 # SoC: apply the checkout once and log to the terminal
 /usr/data/python-hf/bin/python3 /usr/data/opencreator/startup/opencreator_updater.py soc --once --stdout
+# Tunneled printer SoC: pull opencreator-fs and update OpenCreator's own folders
+oc-tunneled
 # SBC
 python3 ~/opencreator-tunnel/pi/opencreator-updater/update.py
 ```

@@ -5,6 +5,8 @@
 SCRIPTS=/usr/data/opencreator/startup/scripts
 export LD_LIBRARY_PATH=/usr/prog/Python-3.8.2/lib:/usr/prog/openssl-1.0.2d/lib:/usr/prog/libffi-3.4.4/lib:$LD_LIBRARY_PATH
 export PATH=$PATH:/opt/bin
+chmod 755 /usr/data/opencreator/tunneled/oc-tunneled 2>/dev/null
+[ -d /opt/bin ] && ln -sf /usr/data/opencreator/tunneled/oc-tunneled /opt/bin/oc-tunneled
 
 # MCU firmware the installer left for this power-on, before the tunnel wakes the boards
 [ ! -f /usr/data/opencreator/mcu-flash-pending/flash.sh ] ||

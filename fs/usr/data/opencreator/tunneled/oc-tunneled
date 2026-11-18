@@ -1,0 +1,40 @@
+#!/bin/sh
+# oc-tunneled: pull opencreator-fs and update OpenCreator's own files on a
+# tunneled printer, where no Moonraker or updater runs on the SoC.
+# See config-docs/UPDATER.md.
+REPO=/usr/data/opencreator/opencreator-fs
+UPDATER=/usr/data/opencreator/startup/opencreator_updater.py
+export PATH=$PATH:/opt/bin
+# FlashForge's LD_LIBRARY_PATH breaks Entware's git.
+unset LD_LIBRARY_PATH
+
+die() { echo "oc-tunneled: $*" >&2; exit 1; }
+
+[ "$(id -u)" -eq 0 ] || die "run it as root"
+command -v git > /dev/null || die "git not found (Entware)"
+[ -x /usr/data/opencreator/tunneled/tunneled.sh ] ||
+    echo "oc-tunneled: this printer isn't in tunnel mode; its own updater already does this every minute"
+
+if [ -d "$REPO/.git" ]; then
+    branch=$(git -C "$REPO" rev-parse --abbrev-ref HEAD) || die "can't read $REPO"
+    [ "$branch" != HEAD ] || branch=main
+    before=$(git -C "$REPO" rev-parse HEAD)
+    if [ "$(git -C "$REPO" rev-parse --is-shallow-repository)" = true ]; then
+        git -C "$REPO" fetch --quiet --depth 1 origin "$branch" || die "fetch failed (no network?)"
+    else
+        git -C "$REPO" fetch --quiet origin "$branch" || die "fetch failed (no network?)"
+    fi
+    git -C "$REPO" reset --quiet --hard FETCH_HEAD || die "can't update $REPO"
+    after=$(git -C "$REPO" rev-parse HEAD)
+    if [ "$before" = "$after" ]; then
+        echo "opencreator-fs: already up to date ($(echo "$after" | cut -c1-9))"
+    else
+        echo "opencreator-fs: $(echo "$before" | cut -c1-9) -> $(echo "$after" | cut -c1-9)"
+    fi
+fi
+
+for py in /usr/data/python-hf/bin/python3 /opt/bin/python3; do
+    [ -x "$py" ] && exec "$py" "$UPDATER" soc --tunneled --stdout
+done
+# The printer's own Python needs its library; git, run from it, doesn't mind.
+LD_LIBRARY_PATH=/usr/prog/Python-3.8.2/lib exec /usr/prog/Python-3.8.2/bin/python3 "$UPDATER" soc --tunneled --stdout

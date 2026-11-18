@@ -453,5 +453,39 @@ class KalicoSyncTest(unittest.TestCase):
         self.assertEqual(self.kalico_file(), "mine")
 
 
+class TunneledSyncTest(unittest.TestCase):
+    """SocUpdater.sync_tunneled (oc-tunneled): OpenCreator's folders only, never the configs."""
+
+    def setUp(self):
+        self.tmp = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.fs = self.tmp / "clone"
+        tun = self.fs / "fs" / "usr" / "data" / "opencreator" / "tunneled"
+        tun.mkdir(parents=True)
+        (tun / "tunneled.sh").write_text("new\n")
+        (tun / "oc-tunneled").write_text("new\n")
+        cfg = self.fs / "fs" / "usr" / "data" / "config"
+        cfg.mkdir(parents=True)
+        (cfg / "printer.cfg").write_text("[printer]\n")
+        git(self.fs, "init", "-q", "-b", "main")
+        git(self.fs, "add", "-A")
+        git(self.fs, "commit", "-q", "-m", "one")
+        self.oc = self.tmp / "oc"
+        (self.oc / "tunneled").mkdir(parents=True)
+        (self.oc / "tunneled" / "tunneled.sh").write_text("old\n")
+        os.chmod(str(self.oc / "tunneled" / "tunneled.sh"), 0o755)
+        self.s = up.SocUpdater(config_dir=self.tmp / "config", clone=self.fs, ocdir=self.oc,
+                               log_path=self.tmp / "log")
+
+    def test_updates_folders_not_configs(self):
+        self.assertTrue(self.s.sync_tunneled())
+        sh = self.oc / "tunneled" / "tunneled.sh"
+        self.assertEqual(sh.read_text(), "new\n")
+        self.assertTrue(os.access(str(sh), os.X_OK))
+        self.assertTrue(os.access(str(self.oc / "tunneled" / "oc-tunneled"), os.X_OK))
+        self.assertFalse((self.tmp / "config").exists())
+        self.assertEqual((self.oc / ".loopscript-commit").read_text().strip(), subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=str(self.fs), text=True).strip())
+
+
 if __name__ == "__main__":
     unittest.main()
