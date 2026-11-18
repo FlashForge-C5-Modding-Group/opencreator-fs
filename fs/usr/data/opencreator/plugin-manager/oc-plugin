@@ -1,7 +1,7 @@
 #!/bin/sh
 # OpenCreator plugin manager: oc-plugin list | search [WORD] | install ID|URL | update [ID] | remove ID
 #   enable ID | disable ID | sync | logs ID [ITEM]
-#   start|stop|restart|status [ID [ITEM]] | boot
+#   start|stop|restart|status [ID [ITEM]] | boot | moonraker [URL|--find]
 # $0 may be a symlink (e.g. /opt/bin/oc-plugin); resolve to the real script so
 # HERE is the directory that actually contains oc_plugin.py.
 SELF=$0
@@ -19,5 +19,9 @@ for py in /usr/data/python-hf/bin/python3 /usr/data/opencreator/klipper/klippy-e
         exec "$py" "$HERE/oc_plugin.py" "$@"
     fi
 done
+# Tunneled printers have only the printer's own Python, which needs its library path.
+if [ -x /usr/prog/Python-3.8.2/bin/python3 ]; then
+    LD_LIBRARY_PATH=/usr/prog/Python-3.8.2/lib exec /usr/prog/Python-3.8.2/bin/python3 "$HERE/oc_plugin.py" "$@"
+fi
 echo "oc-plugin: no Python found" >&2
 exit 1

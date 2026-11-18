@@ -11,8 +11,10 @@ import signal
 import subprocess
 import sys
 import tempfile
+import socket
 import time
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 
 MANIFEST = "opencreator-plugin.json"
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{1,40}$")
@@ -23,6 +25,10 @@ KEEP = "00-oc-plugins.conf"
 CATALOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "catalog.json")
 MODELS = {"Creator5": "Creator 5", "Creator5Pro": "Creator 5 Pro"}
 MODES = {"soc": "SoC", "sbc": "SBC"}
+# executable while the printer is a tunnel bridge for an SBC (OpenCreator's tunnel mode),
+# which makes it an SBC install whose Klipper and Moonraker are on the SBC
+TUNNELED = "/usr/data/opencreator/tunneled/tunneled.sh"
+MOONRAKER_PORT = 7125
 STOCK_SCRIPTS = ("/usr/prog/app_startup.sh", "/usr/prog/PROGRAM/runFirmwareExe.sh")
 # Startup item logs are rotated past this size (on the printer they're in /tmp, which is RAM)
 LOG_MAX = 512 * 1024
@@ -74,9 +80,18 @@ class PluginError(Exception):
     pass
 
 
+def _first_line(path):
+    try:
+        with open(path) as f:
+            return f.readline().strip()
+    except OSError:
+        return ""
+
+
 class Paths:
     def __init__(self):
-        soc = os.path.isdir("/usr/data/opencreator/klipper/config")
+        tunneled = os.access(TUNNELED, os.X_OK)
+        soc = tunneled or os.path.isdir("/usr/data/opencreator/klipper/config")
         home = os.path.expanduser("~")
         env = os.environ.get
         self.plugins = env("OC_PLUGINS_DIR") or (
@@ -87,7 +102,6 @@ class Paths:
             "/usr/data/opencreator/klipper/config" if soc else os.path.join(home, "printer_data", "config"))
         self.moonraker = env("OC_MOONRAKER_DIR") or (
             "/usr/prog/moonraker/moonraker" if soc else os.path.join(home, "moonraker"))
-        self.url = env("OC_MOONRAKER_URL") or "http://127.0.0.1:7125"
         # Kalico loads third-party modules from klippy/plugins (git-ignored, and it refuses names that
         # clash with its own extras); mainline Klipper only has klippy/extras.
         self.builtin = os.path.join(self.klipper, "klippy", "extras")
@@ -101,7 +115,12 @@ class Paths:
         self.data = os.path.join(self.plugins, ".data")
         self.run = os.path.join(self.plugins, ".run")
         self.logs = env("OC_PLUGIN_LOGS") or ("/tmp" if soc else os.path.join(self.plugins, ".logs"))
-        self.mode = env("OC_INSTALL_MODE") or ("soc" if soc else "sbc")
+        self.tunneled = env("OC_TUNNELED", "1" if tunneled else "") == "1"
+        self.mode = env("OC_INSTALL_MODE") or ("sbc" if tunneled or not soc else "soc")
+        # tunneled: Moonraker is on the SBC; its address is found with `oc-plugin moonraker --find`
+        self.url_file = os.path.join(self.plugins, ".moonraker-url")
+        self.url = env("OC_MOONRAKER_URL") or (self.tunneled and _first_line(self.url_file)) or \
+            "http://127.0.0.1:%d" % MOONRAKER_PORT
         self.model = env("OC_PRINTER_MODEL")
         self.catalog = env("OC_PLUGIN_CATALOG") or CATALOG
 
@@ -259,6 +278,112 @@ def compat_problems(p, req, warn=True):
     if modes and p.mode not in modes:
         out.append("made for %s installs, not %s" % (" or ".join(MODES[x] for x in modes), MODES[p.mode]))
     return out
+
+
+def runs_on(req):
+    return req.get("modes") or ["soc", "sbc"]
+
+
+# ---- tunneled: finding the SBC's Moonraker ----------------------------------------
+
+def _get_json(url, timeout):
+    with urllib.request.urlopen(url, timeout=timeout) as r:
+        return json.load(r)
+
+
+def is_tunnel_moonraker(url, timeout=3):
+    """A Moonraker on an OpenCreator tunnel SBC: it has the SBC updater's update_manager
+    entry, or its Klipper's MCUs are on the USB gadget's /dev/ttyGS ports."""
+    try:
+        if "update_manager opencreator-updater" in _get_json(url + "/server/config", timeout)["result"]["config"]:
+            return True
+    except Exception:
+        return False
+    try:
+        settings = _get_json(url + "/printer/objects/query?configfile=settings",
+                             timeout)["result"]["status"]["configfile"]["settings"]
+    except Exception:
+        return False
+    return any(isinstance(v, dict) and str(v.get("serial", "")).startswith("/dev/ttyGS")
+               for k, v in settings.items() if k.split()[0] == "mcu")
+
+
+def local_networks():
+    """The printer's own IPv4 addresses, loopback left out."""
+    try:
+        text = subprocess.run(["ip", "-4", "-o", "addr", "show"], stdout=subprocess.PIPE,
+                              stderr=subprocess.DEVNULL, universal_newlines=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        text = ""
+    return [ip for ip in re.findall(r"inet (\d+\.\d+\.\d+\.\d+)/", text) if not ip.startswith("127.")]
+
+
+def candidates(own, arp="/proc/net/arp"):
+    """Addresses to try: known neighbours first, then the rest of each address's /24."""
+    nets = {ip.rsplit(".", 1)[0] for ip in own}
+    seen, out = set(own), []
+    try:
+        with open(arp) as f:
+            next(f, None)
+            for line in f:
+                ip = line.split()[0]
+                if ip not in seen and ip.rsplit(".", 1)[0] in nets:
+                    seen.add(ip)
+                    out.append(ip)
+    except (OSError, IndexError):
+        pass
+    for base in sorted(nets):
+        for n in range(1, 255):
+            ip = "%s.%d" % (base, n)
+            if ip not in seen:
+                seen.add(ip)
+                out.append(ip)
+    return out
+
+
+def _port_open(ip, port=MOONRAKER_PORT, timeout=0.5):
+    try:
+        with socket.create_connection((ip, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def sbc_name(url):
+    """The SBC's hostname, from Klipper (empty while Klipper isn't running)."""
+    try:
+        return _get_json(url + "/printer/info", 3)["result"].get("hostname", "")
+    except Exception:
+        return ""
+
+
+def find_tunnels(own=None):
+    """[(url, hostname)] of every OpenCreator tunnel SBC on the printer's own networks."""
+    ips = candidates(local_networks() if own is None else own)
+    with ThreadPoolExecutor(64) as pool:
+        found = [ip for ip, ok in zip(ips, pool.map(_port_open, ips)) if ok]
+    urls = ["http://%s:%d" % (ip, MOONRAKER_PORT) for ip in found]
+    return [(u, sbc_name(u)) for u in urls if is_tunnel_moonraker(u)]
+
+
+def choose(tunnels, ask=None):
+    ask = ask or input
+    print("Found %d tunnel SBCs:" % len(tunnels))
+    for n, (url, name) in enumerate(tunnels, 1):
+        print("  %d) %s%s" % (n, url, "  (%s)" % name if name else ""))
+    while True:
+        try:
+            pick = ask("Which one is this printer's? [1-%d] " % len(tunnels)).strip()
+        except EOFError:
+            return None
+        if pick.isdigit() and 1 <= int(pick) <= len(tunnels):
+            return tunnels[int(pick) - 1][0]
+
+
+def save_url(p, url):
+    os.makedirs(p.plugins, exist_ok=True)
+    _write(p.url_file, url + "\n")
+    p.url = url
 
 
 # ---- catalog ---------------------------------------------------------------------
@@ -487,6 +612,8 @@ def menu_config(p):
 
 def sync(p, klipper=True, moonraker=True):
     """Make the links and config includes match the enabled plugins. Safe to run any time."""
+    if p.tunneled:
+        return []                               # Klipper and Moonraker are on the SBC
     disabled = set(read_state(p)["disabled"])
     extras, components, kcfg, mcfg = set(), set(), set(), set()
     problems = []
@@ -561,7 +688,8 @@ def plugin_env(p, m, root):
     data = os.path.join(p.data, m["id"])
     os.makedirs(data, exist_ok=True)
     env.update(OC_PLUGIN_ID=m["id"], OC_PLUGIN_DIR=root, OC_PLUGIN_DATA=data, OC_CONFIG_DIR=p.config,
-               OC_KLIPPER_DIR=p.klipper, OC_MOONRAKER_URL=p.url, PATH=env.get("PATH", "/usr/bin:/bin") + ":/opt/bin")
+               OC_KLIPPER_DIR=p.klipper, OC_MOONRAKER_URL=p.url, OC_INSTALL_MODE=p.mode,
+               OC_TUNNELED="1" if p.tunneled else "", PATH=env.get("PATH", "/usr/bin:/bin") + ":/opt/bin")
     return env
 
 
@@ -709,7 +837,7 @@ def _api(p, path, method="GET"):
 
 
 def restart(p, services):
-    if not services:
+    if not services or p.tunneled:
         return
     try:
         state = _api(p, "/printer/objects/query?print_stats=state")["result"]["status"]["print_stats"]["state"]
@@ -796,6 +924,8 @@ def cmd_install(p, a):
         problems = compat_problems(p, m["requires"], warn=entry is None)
         if problems and not a.force:
             raise PluginError("not installed: %s (--force installs it anyway)" % "; ".join(problems))
+        if p.tunneled and services_for(m):
+            print("warning: Klipper and Moonraker run on the SBC; this plugin's parts for them aren't used here")
         dest = os.path.join(p.plugins, m["id"])
         if os.path.exists(dest):
             raise PluginError("%s is already installed; use oc-plugin update %s" % (m["id"], m["id"]))
@@ -1034,6 +1164,7 @@ def cmd_search(p, a):
             status = ("installed" if e["id"] in have else
                       "incompatible: " + "; ".join(problems) if problems else "")
             print("%-*s %-32s %s" % (w, e["id"], e.get("name", e["id"]), status))
+            print("%-*s runs on: %s" % (w, "", ", ".join(MODES[x] for x in runs_on(e["requires"]))))
             for key in ("description", "url", "note"):
                 if e.get(key):
                     print("%-*s %s" % (w, "", e[key]))
@@ -1046,6 +1177,42 @@ def cmd_boot(p, a):
     """At boot (startup.sh): start every enabled plugin's startup items."""
     a.id, a.item = None, None
     return cmd_start(p, a)
+
+
+def cmd_moonraker(p, a):
+    """Tunneled printers: show, set or find the SBC's Moonraker, which plugins get as OC_MOONRAKER_URL."""
+    if a.url:
+        url = a.url.rstrip("/")
+        if not re.match(r"https?://[^/\s]+$", url):
+            raise PluginError("give a URL like http://192.168.1.50:7125")
+        save_url(p, url)
+    elif a.find or a.scan:
+        saved = _first_line(p.url_file)
+        if a.find and saved and is_tunnel_moonraker(saved):
+            print(saved)
+            return 0
+        tunnels = find_tunnels()
+        urls = [u for u, _ in tunnels]
+        if not tunnels:
+            print("No OpenCreator tunnel SBC answered on port %d" % MOONRAKER_PORT, file=sys.stderr)
+            return 1
+        if len(tunnels) == 1:
+            url = urls[0]
+        elif a.find and saved in urls:
+            url = saved
+        elif sys.stdin.isatty():
+            url = choose(tunnels)
+            if not url:
+                return 1
+        else:
+            print("Found %d tunnel SBCs; pick one with oc-plugin moonraker URL:" % len(tunnels), file=sys.stderr)
+            for url, name in tunnels:
+                print("  %s%s" % (url, "  (%s)" % name if name else ""), file=sys.stderr)
+            return 2
+        if url != saved:
+            save_url(p, url)
+    print(p.url)
+    return 0
 
 
 def cmd_sync(p, a):
@@ -1087,6 +1254,12 @@ def main(argv=None):
         c.add_argument("id", nargs="?")
         if name != "status":
             c.add_argument("item", nargs="?", help="only this startup item")
+    mr = sub.add_parser("moonraker", help="tunneled printers: show, set or find the SBC's Moonraker URL")
+    mr.add_argument("url", nargs="?", help="set it, e.g. http://192.168.1.50:7125")
+    mr.add_argument("--find", action="store_true",
+                    help="keep the saved SBC if it answers, else look for it on the network and save it")
+    mr.add_argument("--scan", action="store_true",
+                    help="list every tunnel SBC on the network and pick one")
     sub.add_parser("boot", help="start every enabled plugin's startup items (run by startup.sh at boot)")
     r.add_argument("--keep-data", action="store_true", help="keep the plugin's data folder")
     for parser in (i, u, r) + tuple(sub.choices[n] for n in ("enable", "disable")):
@@ -1096,7 +1269,7 @@ def main(argv=None):
     cmds = {"list": cmd_list, "install": cmd_install, "update": cmd_update, "remove": cmd_remove,
             "enable": cmd_enable, "disable": lambda p, a: cmd_enable(p, a, False), "sync": cmd_sync,
             "start": cmd_start, "stop": cmd_stop, "restart": cmd_restart, "status": cmd_status, "boot": cmd_boot,
-            "search": cmd_search, "logs": cmd_logs}
+            "search": cmd_search, "logs": cmd_logs, "moonraker": cmd_moonraker}
     if a.cmd not in cmds:
         ap.print_help()
         return 2

@@ -15,7 +15,8 @@
       "author": "Printer Buddy",
       "description": "Print failure detection on the printer's own X2600 RISC-V core, with a web page on port 7180.",
       "url": "https://github.com/FlashForge-C5-Modding-Group/printer-buddy-lite.git",
-      "requires": {"modes": ["soc"]}
+      "requires": {"modes": ["soc", "sbc"]},
+      "note": "Install it on the printer, also on tunneled printers, where it finds the SBC's Moonraker by itself."
     },
     {
       "id": "octoeverywhere",

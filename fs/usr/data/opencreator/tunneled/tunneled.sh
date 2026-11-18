@@ -17,6 +17,12 @@ sh "$SCRIPTS/06-sftp.sh"
 sh "$SCRIPTS/30-camera.sh" &
 sh "$SCRIPTS/40-grumpyscreen.sh" &
 sh "$SCRIPTS/41-helixscreen.sh" &
+# Plugins made for tunneled printers (their startup items only)
+PLUGINS=/usr/data/opencreator/plugin-manager/oc-plugin
+if [ -f "$PLUGINS" ]; then
+    [ -d /opt/bin ] && ln -sf "$PLUGINS" /opt/bin/oc-plugin
+    sh "$PLUGINS" boot > /tmp/oc-plugin-boot.log 2>&1 &
+fi
 
 while true; do
     /usr/prog/Python-3.8.2/bin/python3 /usr/prog/c5-tunnel-socat/c5_socat.py

@@ -325,6 +325,94 @@ class PluginTest(unittest.TestCase):
         self.assertEqual(len(ids), len(set(ids)))
         self.assertTrue(any(e["official"] for e in entries))
 
+    # ---- tunneled
+
+    def test_tunneled_printer_is_sbc_and_links_nothing(self):
+        with mock.patch.dict(os.environ, {"OC_TUNNELED": "1", "OC_INSTALL_MODE": ""}),                 mock.patch.object(oc, "TUNNELED", "/nonexistent"):
+            del os.environ["OC_INSTALL_MODE"]
+            self.assertEqual(oc.Paths().mode, "sbc")
+            self.set_requires(self.src, {"modes": ["soc", "sbc"]})
+            self.assertEqual(self.run_cli("install", str(self.src), "--no-restart"), 0)
+        self.assertFalse((self.tmp / "klipper" / "klippy" / "plugins" / "oc_hello.py").exists())
+        self.assertNotIn("plugins", (self.tmp / "config" / "printer.cfg").read_text())
+
+    def test_search_says_where_it_runs(self):
+        entries = [{"id": "hello", "url": "u1", "requires": {"modes": ["soc"]}},
+                   {"id": "other", "url": "u2"}]
+        with self.write_catalog(entries), mock.patch("sys.stdout") as out:
+            self.run_cli("search")
+        text = "".join(c.args[0] for c in out.write.call_args_list)
+        self.assertIn("runs on: SoC\n", text)
+        self.assertIn("runs on: SoC, SBC", text)
+
+    def test_moonraker_url_is_saved_for_tunneled_plugins(self):
+        with mock.patch.dict(os.environ, {"OC_TUNNELED": "1"}):
+            del os.environ["OC_MOONRAKER_URL"]
+            self.assertEqual(self.run_cli("moonraker", "nonsense"), 1)
+            self.assertEqual(self.run_cli("moonraker", "http://10.0.0.5:7125/"), 0)
+            self.assertEqual(oc.Paths().url, "http://10.0.0.5:7125")
+            one = [("http://10.0.0.9:7125", "pi")]
+            with mock.patch.object(oc, "is_tunnel_moonraker", lambda url: False),                     mock.patch.object(oc, "find_tunnels", lambda: one):
+                self.assertEqual(self.run_cli("moonraker", "--find"), 0)
+            self.assertEqual(oc.Paths().url, "http://10.0.0.9:7125")
+
+    def test_several_tunnel_sbcs(self):
+        two = [("http://10.0.0.7:7125", "pi-a"), ("http://10.0.0.9:7125", "pi-b")]
+        with mock.patch.dict(os.environ, {"OC_TUNNELED": "1"}),                 mock.patch.object(oc, "find_tunnels", lambda: two),                 mock.patch.object(oc, "is_tunnel_moonraker", lambda url: True):
+            del os.environ["OC_MOONRAKER_URL"]
+            with mock.patch("sys.stdin") as stdin, mock.patch("sys.stderr"):
+                stdin.isatty.return_value = False
+                self.assertEqual(self.run_cli("moonraker", "--find"), 2)
+                stdin.isatty.return_value = True
+                with mock.patch("builtins.input", side_effect=["x", "2"]), mock.patch("sys.stdout"):
+                    self.assertEqual(self.run_cli("moonraker", "--scan"), 0)
+            self.assertEqual(oc.Paths().url, "http://10.0.0.9:7125")
+            with mock.patch("sys.stdin") as stdin, mock.patch("sys.stdout"):
+                stdin.isatty.return_value = False      # the saved one answers: no scan, no question
+                self.assertEqual(self.run_cli("moonraker", "--find"), 0)
+
+    def test_find_tunnels_checks_open_ports(self):
+        with mock.patch.object(oc, "_port_open", lambda ip: ip in ("10.0.0.7", "10.0.0.9")),                 mock.patch.object(oc, "is_tunnel_moonraker", lambda url: "10.0.0.9" in url),                 mock.patch.object(oc, "sbc_name", lambda url: "pi"):
+            self.assertEqual(oc.find_tunnels(["10.0.0.2"]), [("http://10.0.0.9:7125", "pi")])
+
+    def test_candidates_try_neighbours_first(self):
+        arp = self.tmp / "arp"
+        arp.write_text("IP address HW type Flags HW address Mask Device\n"
+                       "192.168.2.89 0x1 0x2 aa:bb wlan0\n10.9.9.9 0x1 0x2 cc:dd eth0\n")
+        ips = oc.candidates(["192.168.2.92"], str(arp))
+        self.assertEqual(ips[0], "192.168.2.89")
+        self.assertNotIn("192.168.2.92", ips)
+        self.assertNotIn("10.9.9.9", ips)
+        self.assertEqual(len(ips), 253)
+
+    def test_tunnel_moonraker_is_recognised(self):
+        import http.server
+        import threading
+        answers = {}
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                body = answers.get(self.path)
+                self.send_response(200 if body else 404)
+                self.end_headers()
+                self.wfile.write(json.dumps(body or {}).encode())
+
+            def log_message(self, *a):
+                pass
+
+        srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.shutdown)
+        url = "http://127.0.0.1:%d" % srv.server_port
+        answers["/server/config"] = {"result": {"config": {"server": {}}}}
+        self.assertFalse(oc.is_tunnel_moonraker(url))
+        answers["/printer/objects/query?configfile=settings"] = {"result": {"status": {"configfile": {
+            "settings": {"mcu": {"serial": "/dev/ttyGS2"}, "printer": {}}}}}}
+        self.assertTrue(oc.is_tunnel_moonraker(url))
+        del answers["/printer/objects/query?configfile=settings"]
+        answers["/server/config"] = {"result": {"config": {"update_manager opencreator-updater": {}}}}
+        self.assertTrue(oc.is_tunnel_moonraker(url))
+
     # ---- logs
 
     def test_logs_rotate_and_tail(self):
