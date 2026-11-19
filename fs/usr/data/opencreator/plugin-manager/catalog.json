@@ -54,7 +54,7 @@
       "author": "pappicio",
       "description": "Remote touchscreen access for GrumpyScreen and HelixScreen through a web browser.",
       "url": "https://github.com/pappicio/touchscreen-server-plugin.git",
-      "note": "Requires Script Runner. Install Script Runner first. After installation, open the URL displayed in the installation output to access the printer touchscreen remotely."
+      "note": "Requires Script Runner. Install Script Runner first. After installation, open the URL displayed in the installation output to access the printer touchscreen remotely. May degrade performance. Support will not be given unless running under tunneled."
     }
   ]
 }
