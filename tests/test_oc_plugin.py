@@ -325,6 +325,21 @@ class PluginTest(unittest.TestCase):
         self.assertEqual(len(ids), len(set(ids)))
         self.assertTrue(any(e["official"] for e in entries))
 
+    def test_catalog_is_downloaded_and_cached(self):
+        body = json.dumps({"plugins": [{"id": "fresh", "url": "u"}]}).encode()
+        resp = mock.MagicMock()
+        resp.__enter__.return_value.read.return_value = body
+        with mock.patch.dict(os.environ, {"OC_PLUGIN_CATALOG": "https://example.invalid/catalog.json"}):
+            with mock.patch.object(oc.urllib.request, "urlopen", return_value=resp):
+                self.assertEqual([e["id"] for e in oc.load_catalog(oc.Paths())], ["fresh"])
+            # offline: the last download is used
+            with mock.patch.object(oc.urllib.request, "urlopen", side_effect=OSError("offline")), \
+                    mock.patch("sys.stderr"):
+                self.assertEqual([e["id"] for e in oc.load_catalog(oc.Paths())], ["fresh"])
+                (self.tmp / "plugins" / ".catalog.json").unlink()
+                # nothing downloaded yet: the shipped copy
+                self.assertIn("sep-ai", [e["id"] for e in oc.load_catalog(oc.Paths())])
+
     # ---- tunneled
 
     def test_tunneled_printer_is_sbc_and_links_nothing(self):

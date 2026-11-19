@@ -23,6 +23,8 @@ KLIPPER_INCLUDE = "[include plugins/*.cfg]"
 MOONRAKER_INCLUDE = "[include plugins/moonraker/*.conf]"
 KEEP = "00-oc-plugins.conf"
 CATALOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "catalog.json")
+CATALOG_URL = ("https://raw.githubusercontent.com/FlashForge-C5-Modding-Group/opencreator-fs/"
+               "main/fs/usr/data/opencreator/plugin-manager/catalog.json")
 MODELS = {"Creator5": "Creator 5", "Creator5Pro": "Creator 5 Pro"}
 MODES = {"soc": "SoC", "sbc": "SBC"}
 # executable while the printer is a tunnel bridge for an SBC (OpenCreator's tunnel mode),
@@ -122,7 +124,8 @@ class Paths:
         self.url = env("OC_MOONRAKER_URL") or (self.tunneled and _first_line(self.url_file)) or \
             "http://127.0.0.1:%d" % MOONRAKER_PORT
         self.model = env("OC_PRINTER_MODEL")
-        self.catalog = env("OC_PLUGIN_CATALOG") or CATALOG
+        self.catalog = env("OC_PLUGIN_CATALOG") or CATALOG_URL
+        self.catalog_cache = os.path.join(self.plugins, ".catalog.json")
 
 
 # ---- manifests ---------------------------------------------------------------
@@ -388,12 +391,9 @@ def save_url(p, url):
 
 # ---- catalog ---------------------------------------------------------------------
 
-def load_catalog(p):
+def _parse_catalog(text):
     try:
-        with open(p.catalog) as f:
-            c = json.load(f)
-    except FileNotFoundError:
-        raise PluginError("no plugin catalog at %s" % p.catalog)
+        c = json.loads(text)
     except ValueError as e:
         raise PluginError("the plugin catalog is not valid JSON: %s" % e)
     entries = c.get("plugins") if isinstance(c, dict) else None
@@ -407,6 +407,33 @@ def load_catalog(p):
         check_requires(e.setdefault("requires", {}), "catalog %s requires" % e["id"])
         if not isinstance(e.setdefault("official", False), bool):
             raise PluginError("catalog %s: official is true or false" % e["id"])
+    return entries
+
+
+def _read_catalog(path):
+    try:
+        with open(path) as f:
+            return _parse_catalog(f.read())
+    except FileNotFoundError:
+        raise PluginError("no plugin catalog at %s" % path)
+
+
+def load_catalog(p):
+    if not re.match(r"https?://", p.catalog):
+        return _read_catalog(p.catalog)
+    try:
+        with urllib.request.urlopen(p.catalog, timeout=10) as r:
+            text = r.read().decode("utf-8")
+        entries = _parse_catalog(text)
+    except (OSError, ValueError, PluginError) as e:
+        # offline or a bad download: the last good download, else the copy shipped with OpenCreator
+        fallback = p.catalog_cache if os.path.isfile(p.catalog_cache) else CATALOG
+        print("note: couldn't get the plugin catalog (%s); using %s" % (e, fallback), file=sys.stderr)
+        return _read_catalog(fallback)
+    try:
+        _write(p.catalog_cache, text)
+    except OSError:
+        pass
     return entries
 
 
