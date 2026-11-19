@@ -1,3 +1,4 @@
+
 {
   "plugins": [
     {
@@ -36,6 +37,24 @@
       "description": "Pick which OrcaSlicer filament preset each AFC material uses when Orca syncs filaments. Needs OrcaSlicer 2.5 or later.",
       "url": "https://github.com/Xmister/opencreator-orca-filament-profiles.git",
       "note": "AFC now supports this itself, so this plugin may be of little use. If you still want it: put your material-to-preset mappings in orca-filament-profiles/mapping.cfg next to printer.cfg (see its README) and restart Klipper."
+    },
+    {
+      "id": "script-runner",
+      "name": "Script Runner",
+      "official": false,
+      "author": "pappicio",
+      "description": "Automatically runs user shell and Python scripts at startup in both SoC and Tunneled modes.",
+      "url": "https://github.com/pappicio/oc-script-runner.git",
+      "note": "Required by Touchscreen Server. Install this plugin first."
+    },
+    {
+      "id": "touchscreen-server",
+      "name": "Touchscreen Server",
+      "official": false,
+      "author": "pappicio",
+      "description": "Remote touchscreen access for GrumpyScreen and HelixScreen through a web browser.",
+      "url": "https://github.com/pappicio/touchscreen-server-plugin.git",
+      "note": "Requires Script Runner. Install Script Runner first. After installation, open the URL displayed in the installation output to access the printer touchscreen remotely. May degrade performance. Support will not be given unless running under tunneled."
     }
   ]
 }
