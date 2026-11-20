@@ -66,6 +66,22 @@
       "description": "Remote touchscreen access for GrumpyScreen and HelixScreen through a web browser.",
       "url": "https://github.com/pappicio/touchscreen-server-plugin.git",
       "note": "Requires Script Runner. Install Script Runner first. After installation, open the URL displayed in the installation output to access the printer touchscreen remotely. May degrade performance. Support will not be given unless running under tunneled."
+    },
+    {
+      "id": "oc_spoolman_integration",
+      "name": "OpenCreator Spoolman Integration",
+      "version": "1.0.0",
+      "description": "A Spoolman spool per tool through AFC, each tool books filament on its own spool.",
+      "note": "After installing, put your Spoolman server's address in oc-spoolman.conf (next to moonraker.conf) and uncomment its [spoolman] section, then restart Moonraker and run FIRMWARE_RESTART. Optionally, group the SPOOLMAN_* macros in a Fluidd category by hand (README, Setup step 5).",
+      "author": "JayKuswahey",
+      "homepage": "https://github.com/JayKuswahey/OpenCreator-Plugin-Spoolman",
+      "klipper_config": "config/oc-spoolman.cfg",
+      "scripts": {
+        "install": "scripts/install.sh",
+        "update": "scripts/install.sh",
+        "uninstall": "scripts/uninstall.sh"
+      },
+      "restart": ["klipper", "moonraker"]
     }
   ]
 }
