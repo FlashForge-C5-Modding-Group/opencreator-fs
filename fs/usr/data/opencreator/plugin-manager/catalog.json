@@ -20,6 +20,16 @@
       "note": "Install it on the printer, also on tunneled printers, where it finds the SBC's Moonraker by itself."
     },
     {
+      "id": "numpy-shaketune",
+      "name": "Shake&Tune (numpy only)",
+      "official": true,
+      "author": "OpenCreator",
+      "description": "Experimental. Klippain Shake&Tune (input shaper, belts, vibrations and axes map graphs) on the printer itself, using a numpy-only stand-in for matplotlib.",
+      "url": "https://github.com/FlashForge-C5-Modding-Group/numpy-shaketune.git",
+      "requires": {"modes": ["soc"]},
+      "note": "Experimental, and needs a lot of system resources: drawing each graph keeps the CPU busy for about a minute and uses up to about 200 MB of memory. Needs git (opkg install git). Graphs are saved in ShakeTune_results next to printer.cfg."
+    },
+    {
       "id": "octoeverywhere",
       "name": "OctoEverywhere for OpenCreator",
       "official": false,
