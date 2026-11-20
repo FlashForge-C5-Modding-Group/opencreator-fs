@@ -75,6 +75,15 @@
       "description": "Switch between HelixScreen and GrumpyScreen using Klipper macros.",
       "url": "https://github.com/pappicio/display-manager.git",
       "note": "Requires Script Runner. Install Script Runner first. May impact printer performance. No support will be provided when running in SoC mode, including performance issues or MCU shutdowns."
+    },
+    {
+      "id": "samba-share",
+      "name": "Samba Share",
+      "official": false,
+      "author": "pappicio",
+      "description": "Provides network access to /usr/data through an SMB share.",
+      "url": "https://github.com/pappicio/samba-share.git",
+      "note": "Requires Entware. Exposes /usr/data as a writable network share. Guest access is enabled, so use only on a trusted local network."
     }
   ]
 }
