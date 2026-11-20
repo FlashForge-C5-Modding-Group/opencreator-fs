@@ -45,6 +45,7 @@
       "official": false,
       "author": "Xmister",
       "description": "Pick which OrcaSlicer filament preset each AFC material uses when Orca syncs filaments. Needs OrcaSlicer 2.5 or later.",
+      "requires": {"modes": ["soc"]},
       "url": "https://github.com/Xmister/opencreator-orca-filament-profiles.git",
       "note": "AFC now supports this itself, so this plugin may be of little use. If you still want it: put your material-to-preset mappings in orca-filament-profiles/mapping.cfg next to printer.cfg (see its README) and restart Klipper."
     },
