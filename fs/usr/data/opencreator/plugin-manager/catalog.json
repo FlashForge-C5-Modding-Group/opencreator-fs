@@ -84,6 +84,15 @@
       "description": "Provides network access to /usr/data through an SMB share.",
       "url": "https://github.com/pappicio/samba-share.git",
       "note": "Requires Entware. Exposes /usr/data as a writable network share. Guest access is enabled, so use only on a trusted local network."
+    },
+    {
+      "id": "oc_spoolman_integration",
+      "name": "OpenCreator Spoolman Integration",
+      "official": false,
+      "description": "A Spoolman spool per tool through AFC, each tool books filament on its own spool.",
+      "note": "After installing, put your Spoolman server's address in oc-spoolman.conf (next to moonraker.conf) and uncomment its [spoolman] section, then restart Moonraker and run FIRMWARE_RESTART. Optionally, group the SPOOLMAN_* macros in a Fluidd category by hand (README, Setup step 5).",
+      "author": "JayKuswahey",
+      "url": "https://github.com/JayKuswahey/OpenCreator-Plugin-Spoolman",
     }
   ]
 }
