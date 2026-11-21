@@ -92,6 +92,15 @@
       "note": "After installing, put your Spoolman server's address in oc-spoolman.conf (next to moonraker.conf) and uncomment its [spoolman] section, then restart Moonraker and run FIRMWARE_RESTART. Optionally, group the SPOOLMAN_* macros in a Fluidd category by hand (README, Setup step 5).",
       "author": "JayKuswahey",
       "url": "https://github.com/JayKuswahey/OpenCreator-Plugin-Spoolman.git"
+    },
+    {
+      "id": "api-server",
+      "name": "API Server",
+      "official": false,
+      "author": "pappicio",
+      "description": "Provides HTTP API endpoints for Creator 5 mode switching and synchronization with a remote Linux host.",
+      "url": "https://github.com/pappicio/api-server.git",
+      "note": "Requires Script Runner on Creator 5 and Mode Monitor installed on the Raspberry Pi, Radxa ZERO 3W, or another compatible remote Linux host. Mode Monitor: https://github.com/pappicio/Raspberry-C5-klipper_mode_monitor. Both components are required for complete mode switching and data synchronization."
     }
   ]
 }
