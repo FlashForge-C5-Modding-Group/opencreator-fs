@@ -19,7 +19,7 @@ merges the template's changes into your live config. It keeps:
 
 | | Printer SoC | Tunnel SBC |
 | --- | --- | --- |
-| Templates | `fs/usr/data/config/*.cfg` in the opencreator-fs checkout (`/usr/data/opencreator/opencreator-fs`) | `pi/config/*.cfg` and `pi/config/.fluidd-theme/*` in the opencreator-tunnel checkout |
+| Templates | every `.cfg` under `fs/usr/data/config/`, subfolders included (`AFC/`, `KAMP_LiTE/`), in the opencreator-fs checkout (`/usr/data/opencreator/opencreator-fs`) | every `.cfg` under `pi/config/`, subfolders included, and `pi/config/.fluidd-theme/*` in the opencreator-tunnel checkout |
 | Live config | `/usr/data/opencreator/klipper/config` | `~/printer_data/config` (`OC_UPDATER_CONFIG_DIR`) |
 | When | Watches the checkout every 60 s; applies each new commit | Once, each time Moonraker's update manager pulls opencreator-tunnel |
 | Also | Updates OpenCreator's own folders (startup scripts, firmwareExe launcher, Moonraker components, Fluidd layout, plugin manager, nginx snippets), Kalico and the MCU firmware | Pulls Klipper (`OC_UPDATER_KLIPPER_DIR`) |

@@ -64,6 +64,18 @@ class UpdaterTest(unittest.TestCase):
         self.updater().record_success([])
         self.assertEqual(self.run_merge(), (False, []))
 
+    def test_subfolder_configs(self):
+        (self.repo / REL / "AFC").mkdir()
+        self.commit(**{"AFC/AFC": V1})
+        self.assertEqual(self.run_merge(), (True, []))
+        self.assertEqual(self.live("AFC/AFC").read_bytes(), V1)
+        self.assertEqual(self.base("AFC/AFC"), V1)
+        self.updater().record_success([])
+        self.live("AFC/AFC").write_bytes(V1.replace(b"x: 1", b"x: 9"))   # user edit
+        self.commit(**{"AFC/AFC": V2})
+        self.assertEqual(self.run_merge(), (True, []))
+        self.assertEqual(self.live("AFC/AFC").read_bytes(), V2.replace(b"x: 1", b"x: 9"))
+
     def test_edit_and_update_merge(self):
         self.commit(p=V1)
         self.run_merge(); self.updater().record_success([])
