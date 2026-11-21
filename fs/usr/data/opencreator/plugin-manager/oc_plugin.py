@@ -41,6 +41,7 @@ MENU_MACROS = """
 [gcode_macro OC_PLUGINS]
 description: Show the installed OpenCreator plugins
 variable_plugins: @PLUGINS@
+variable_market: @MARKET@
 gcode:
   RESPOND TYPE=command MSG="action:prompt_end"
   RESPOND TYPE=command MSG="action:prompt_begin Plugins ({plugins|length})"
@@ -52,6 +53,7 @@ gcode:
       RESPOND TYPE=command MSG="action:prompt_button {plugin.label}|OC_PLUGIN_INFO ID={plugin.id}|{plugin.color}"
     {% endfor %}
   {% endif %}
+  RESPOND TYPE=command MSG="action:prompt_footer_button Marketplace|OC_PLUGIN_MARKET"
   RESPOND TYPE=command MSG="action:prompt_footer_button Close|_OC_PLUGINS_CLOSE"
   RESPOND TYPE=command MSG="action:prompt_show"
 
@@ -69,6 +71,41 @@ gcode:
     RESPOND TYPE=command MSG="action:prompt_text {line}"
   {% endfor %}
   RESPOND TYPE=command MSG="action:prompt_footer_button Back|OC_PLUGINS"
+  RESPOND TYPE=command MSG="action:prompt_footer_button Close|_OC_PLUGINS_CLOSE"
+  RESPOND TYPE=command MSG="action:prompt_show"
+
+[gcode_macro OC_PLUGIN_MARKET]
+description: Show every plugin in the OpenCreator plugin catalog
+gcode:
+  {% set market = printer["gcode_macro OC_PLUGINS"].market %}
+  RESPOND TYPE=command MSG="action:prompt_end"
+  RESPOND TYPE=command MSG="action:prompt_begin Plugin marketplace ({market|length})"
+  {% if not market %}
+    RESPOND TYPE=command MSG="action:prompt_text The plugin catalog couldn't be read. Run oc-plugin search over SSH to fetch it."
+  {% else %}
+    RESPOND TYPE=command MSG="action:prompt_text Blue: official. Yellow: unofficial. Grey: installed. Red: doesn't run on this printer."
+    {% for plugin in market %}
+      RESPOND TYPE=command MSG="action:prompt_button {plugin.label}|OC_PLUGIN_MARKET_INFO ID={plugin.id}|{plugin.color}"
+    {% endfor %}
+  {% endif %}
+  RESPOND TYPE=command MSG="action:prompt_footer_button Installed|OC_PLUGINS"
+  RESPOND TYPE=command MSG="action:prompt_footer_button Close|_OC_PLUGINS_CLOSE"
+  RESPOND TYPE=command MSG="action:prompt_show"
+
+[gcode_macro OC_PLUGIN_MARKET_INFO]
+description: Show one catalog plugin's details (ID=plugin id)
+gcode:
+  {% set found = printer["gcode_macro OC_PLUGINS"].market|selectattr("id", "equalto", params.ID|default("")|lower)|list %}
+  {% if not found %}
+    { action_raise_error("No plugin with ID " ~ params.ID|default("") ~ " in the catalog") }
+  {% endif %}
+  {% set plugin = found[0] %}
+  RESPOND TYPE=command MSG="action:prompt_end"
+  RESPOND TYPE=command MSG="action:prompt_begin {plugin.title}"
+  {% for line in plugin.lines %}
+    RESPOND TYPE=command MSG="action:prompt_text {line}"
+  {% endfor %}
+  RESPOND TYPE=command MSG="action:prompt_footer_button Back|OC_PLUGIN_MARKET"
   RESPOND TYPE=command MSG="action:prompt_footer_button Close|_OC_PLUGINS_CLOSE"
   RESPOND TYPE=command MSG="action:prompt_show"
 
@@ -629,12 +666,67 @@ def plugin_summaries(p):
     return out
 
 
-def menu_config(p):
+def _local_catalog(p):
+    """The last fetched catalog, else the bundled one; never the network (sync runs as Klipper starts)."""
+    for path in (p.catalog_cache, CATALOG):
+        try:
+            return _read_catalog(path)
+        except PluginError:
+            continue
+    return []
+
+
+def market_summaries(p):
+    """Each catalog plugin as the OC_PLUGIN_MARKET dialog shows it: official first, then by name."""
+    have = set()
+    for root in installed(p):
+        try:
+            have.add(load_manifest(root)["id"])
+        except PluginError:
+            have.add(os.path.basename(root).lower())
+    out = []
+    for e in sorted(_local_catalog(p), key=lambda e: (not e["official"], e.get("name", e["id"]).lower())):
+        name = e.get("name", e["id"])
+        problems = compat_problems(p, e["requires"], warn=False)
+        lines = ["Official plugin" if e["official"] else "Unofficial: not made or checked by OpenCreator"]
+        if e.get("author"):
+            lines.append("By %s" % e["author"])
+        if e.get("description"):
+            lines.append(e["description"])
+        lines.append("Runs on: %s" % ", ".join(MODES[x] for x in runs_on(e["requires"])))
+        if e.get("note"):
+            lines.append(e["note"])
+        lines.append(e["url"])
+        if e["id"] in have:
+            label, color = "%s (installed)" % name, "secondary"
+            lines.append("Installed. Update over SSH: oc-plugin update %s" % e["id"])
+        elif problems:
+            label, color = "%s (incompatible)" % name, "error"
+            lines.append("Doesn't run on this printer: %s" % "; ".join(problems))
+        else:
+            label, color = name, "primary" if e["official"] else "warning"
+            lines.append("Install over SSH: oc-plugin install %s" % e["id"])
+        out.append({"id": e["id"].lower(), "label": _prompt_text(label), "color": color,
+                    "title": _prompt_text(name), "lines": [_prompt_text(l) for l in lines]})
+    return out
+
+
+def _variable_literal(value):
     # Klipper reads variable_ values with ast.literal_eval, but its config parser cuts a
     # line at # or ;. Both only occur inside strings here, so escaping them is safe.
-    literal = repr(plugin_summaries(p)).replace("#", "\\x23").replace(";", "\\x3b")
-    return ("# Written by oc-plugin at every sync; edits are replaced. OC_PLUGINS shows the plugins.\n"
-            + MENU_MACROS.replace("@PLUGINS@", literal))
+    return repr(value).replace("#", "\\x23").replace(";", "\\x3b")
+
+
+def menu_config(p):
+    return ("# Written by oc-plugin at every sync; edits are replaced. OC_PLUGINS shows the plugins,"
+            " OC_PLUGIN_MARKET the catalog.\n"
+            + MENU_MACROS.replace("@PLUGINS@", _variable_literal(plugin_summaries(p)))
+            .replace("@MARKET@", _variable_literal(market_summaries(p))))
+
+
+def write_menu(p):
+    if not p.tunneled and os.path.isdir(p.klipper_cfg):
+        _write(os.path.join(p.klipper_cfg, MENU), menu_config(p))
 
 
 def sync(p, klipper=True, moonraker=True):
@@ -1201,9 +1293,16 @@ def cmd_search(p, a):
 
 
 def cmd_boot(p, a):
-    """At boot (startup.sh): start every enabled plugin's startup items."""
+    """At boot (startup.sh): start every enabled plugin's startup items, then refresh the catalog
+    the OC_PLUGIN_MARKET dialog shows (Klipper reads it at its next start)."""
     a.id, a.item = None, None
-    return cmd_start(p, a)
+    status = cmd_start(p, a)
+    try:
+        load_catalog(p)
+        write_menu(p)
+    except Exception as e:
+        print("note: couldn't refresh the plugin marketplace: %s" % e, file=sys.stderr)
+    return status
 
 
 def cmd_moonraker(p, a):
