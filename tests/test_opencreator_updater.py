@@ -64,6 +64,18 @@ class UpdaterTest(unittest.TestCase):
         self.updater().record_success([])
         self.assertEqual(self.run_merge(), (False, []))
 
+    def test_subfolder_configs(self):
+        (self.repo / REL / "AFC").mkdir()
+        self.commit(**{"AFC/AFC": V1})
+        self.assertEqual(self.run_merge(), (True, []))
+        self.assertEqual(self.live("AFC/AFC").read_bytes(), V1)
+        self.assertEqual(self.base("AFC/AFC"), V1)
+        self.updater().record_success([])
+        self.live("AFC/AFC").write_bytes(V1.replace(b"x: 1", b"x: 9"))   # user edit
+        self.commit(**{"AFC/AFC": V2})
+        self.assertEqual(self.run_merge(), (True, []))
+        self.assertEqual(self.live("AFC/AFC").read_bytes(), V2.replace(b"x: 1", b"x: 9"))
+
     def test_edit_and_update_merge(self):
         self.commit(p=V1)
         self.run_merge(); self.updater().record_success([])
@@ -211,6 +223,21 @@ class OverlayTest(unittest.TestCase):
         self.assertTrue((dest / "edited.sh").exists() and (dest / "own.sh").exists())
         self.assertEqual(pathlib.Path(str(manifest) + ".new").read_text(),
                          "%s  scripts/a.sh\n" % up.hashlib.md5(b"a2").hexdigest())
+
+    def test_login_banner_linked_on_update(self):
+        s = up.SocUpdater(config_dir=self.tmp / "config", clone=self.tmp / "clone", ocdir=self.tmp / "oc",
+                          log_path=self.tmp / "log")
+        (self.tmp / "etc-profile.d").mkdir()
+        s.profile_link = self.tmp / "etc-profile.d" / "opencreator.sh"
+        s.install_login()                                   # nothing installed yet: no link
+        self.assertFalse(s.profile_link.is_symlink())
+        profile = self.tmp / "oc" / "startup" / "login" / "profile.sh"
+        profile.parent.mkdir(parents=True)
+        profile.write_text("echo hi\\n")
+        s.install_login()
+        self.assertEqual(os.readlink(str(s.profile_link)), str(profile))
+        s.install_login()                                   # already linked: left as is
+        self.assertEqual(os.readlink(str(s.profile_link)), str(profile))
 
     def test_firmware_exe_not_replaced_over_stock(self):
         s = up.SocUpdater(config_dir=self.tmp / "config", clone=self.tmp / "clone", ocdir=self.tmp / "oc",

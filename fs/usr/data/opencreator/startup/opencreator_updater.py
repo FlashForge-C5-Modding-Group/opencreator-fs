@@ -39,6 +39,8 @@ LOOPSCRIPT_PARTS = ("startup", "firmware", "tunneled", "moonraker", "fluidd", "p
                     "mcu-flash")
 NGINX_CONF_D = Path("/usr/data/nginx/conf.d")
 GRUMPYSCREEN_DIR = Path("/usr/data/grumpyscreen")
+# The login banner and prompt (startup/scripts/03-login.sh links it at boot)
+PROFILE_LINK = Path("/etc/profile.d/opencreator.sh")
 FIRMWARE_EXE = Path("/usr/prog/PROGRAM/software/firmwareExe")
 STOCK_STARTUP = (Path("/usr/prog/app_startup.sh"), Path("/usr/prog/PROGRAM/runFirmwareExe.sh"))
 SOC_LOG = Path("/tmp/opencreator-updater.log")
@@ -140,7 +142,8 @@ def md5(path: Path) -> str:
 
 
 class Updater:
-    def __init__(self, config_dir, repo, template_rel, patterns=("*.cfg",), log_path=None,
+    # Every .cfg in the template folder and its subfolders (AFC/, KAMP_LiTE/, ...)
+    def __init__(self, config_dir, repo, template_rel, patterns=("**/*.cfg",), log_path=None,
                  moonraker=MOONRAKER, model_detect=None, out=sys.stdout):
         self.config = Path(config_dir)
         self.state = self.config / ".opencreator-updater"
@@ -442,6 +445,7 @@ class SocUpdater(Updater):
         self.loopscript_applied = self.ocdir / ".loopscript-commit"
         self.nginx = NGINX_CONF_D
         self.grumpyscreen = GRUMPYSCREEN_DIR
+        self.profile_link = PROFILE_LINK
         self.firmware_exe = FIRMWARE_EXE
         self.control = STOCK_CONTROL
         self.klipper = SOC_KLIPPER
@@ -460,6 +464,26 @@ class SocUpdater(Updater):
             self.log("no opencreator-fs checkout and cloning failed (%s); retrying later" % e)
             shutil.rmtree(self.repo, ignore_errors=True)
             return False
+
+    def install_login(self):
+        """Link the login banner and prompt now instead of at the next boot: the
+        startup scripts only run at boot, so an update would show nothing until
+        a reboot. 03-login.sh makes the same link at every boot."""
+        src = self.ocdir / "startup" / "login" / "profile.sh"
+        link = self.profile_link
+        if not link.parent.is_dir() or not src.is_file():
+            return
+        try:
+            if link.is_symlink() and os.readlink(str(link)) == str(src):
+                return
+            tmp = link.with_name("." + link.name + ".oc-new")
+            if tmp.is_symlink() or tmp.exists():
+                tmp.unlink()
+            tmp.symlink_to(src)
+            os.replace(str(tmp), str(link))
+            self.log("login banner: linked %s" % link)
+        except OSError as e:
+            self.log("login banner: could not link %s: %s" % (link, e))
 
     def sync_loopscript(self):
         """OpenCreator's own folders: each is copied next to the live one, the new
@@ -508,6 +532,7 @@ class SocUpdater(Updater):
             changed = True
             if part == "startup":
                 self.repair_moonraker_repo()
+                self.install_login()
         version = src_root / "opencreator" / "version.txt"
         if version.is_file() and (not (self.ocdir / "version.txt").is_file()
                                   or (self.ocdir / "version.txt").read_bytes() != version.read_bytes()):
@@ -829,7 +854,7 @@ class PiUpdater(Updater):
         config = config_dir or os.environ.get("OC_UPDATER_CONFIG_DIR", str(home / "printer_data" / "config"))
         self.klipper = Path(os.environ.get("OC_UPDATER_KLIPPER_DIR", str(home / "klipper")))
         kw.setdefault("moonraker", os.environ.get("OC_UPDATER_MOONRAKER_API", MOONRAKER))
-        super().__init__(config, repo, "pi/config", patterns=("*.cfg", ".fluidd-theme/*"), **kw)
+        super().__init__(config, repo, "pi/config", patterns=("**/*.cfg", ".fluidd-theme/*"), **kw)
 
     def pull_klipper(self) -> bool:
         if not (self.klipper / ".git").is_dir():
