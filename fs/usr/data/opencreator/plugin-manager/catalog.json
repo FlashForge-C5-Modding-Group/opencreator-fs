@@ -66,6 +66,24 @@
       "description": "Remote touchscreen access for GrumpyScreen and HelixScreen through a web browser.",
       "url": "https://github.com/pappicio/touchscreen-server-plugin.git",
       "note": "Requires Script Runner. Install Script Runner first. After installation, open the URL displayed in the installation output to access the printer touchscreen remotely. May degrade performance. Support will not be given unless running under tunneled."
+    },
+    {
+      "id": "display-manager",
+      "name": "OpenCreator Display Manager",
+      "official": false,
+      "author": "pappicio",
+      "description": "Switch between HelixScreen and GrumpyScreen using Klipper macros.",
+      "url": "https://github.com/pappicio/display-manager.git",
+      "note": "Requires Script Runner. Install Script Runner first. May impact printer performance. No support will be provided when running in SoC mode, including performance issues or MCU shutdowns."
+    },
+    {
+      "id": "samba-share",
+      "name": "Samba Share",
+      "official": false,
+      "author": "pappicio",
+      "description": "Provides network access to /usr/data through an SMB share.",
+      "url": "https://github.com/pappicio/samba-share.git",
+      "note": "Requires Entware. Exposes /usr/data as a writable network share. Guest access is enabled, so use only on a trusted local network."
     }
   ]
 }
