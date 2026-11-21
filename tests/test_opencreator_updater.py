@@ -224,6 +224,21 @@ class OverlayTest(unittest.TestCase):
         self.assertEqual(pathlib.Path(str(manifest) + ".new").read_text(),
                          "%s  scripts/a.sh\n" % up.hashlib.md5(b"a2").hexdigest())
 
+    def test_login_banner_linked_on_update(self):
+        s = up.SocUpdater(config_dir=self.tmp / "config", clone=self.tmp / "clone", ocdir=self.tmp / "oc",
+                          log_path=self.tmp / "log")
+        (self.tmp / "etc-profile.d").mkdir()
+        s.profile_link = self.tmp / "etc-profile.d" / "opencreator.sh"
+        s.install_login()                                   # nothing installed yet: no link
+        self.assertFalse(s.profile_link.is_symlink())
+        profile = self.tmp / "oc" / "startup" / "login" / "profile.sh"
+        profile.parent.mkdir(parents=True)
+        profile.write_text("echo hi\\n")
+        s.install_login()
+        self.assertEqual(os.readlink(str(s.profile_link)), str(profile))
+        s.install_login()                                   # already linked: left as is
+        self.assertEqual(os.readlink(str(s.profile_link)), str(profile))
+
     def test_firmware_exe_not_replaced_over_stock(self):
         s = up.SocUpdater(config_dir=self.tmp / "config", clone=self.tmp / "clone", ocdir=self.tmp / "oc",
                           log_path=self.tmp / "log")
