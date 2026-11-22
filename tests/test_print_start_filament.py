@@ -303,6 +303,8 @@ class StopMacroMachine:
             },
             "print_stats": {"state": state},
             "output_pin lower_bed_on_end": {"value": float(lower_bed)},
+            # C5_SAVE_BABYSTEP is optional; model a firmware without it.
+            "gcode": {"commands": {}},
         }
         self.heaters = [220., 215., 210., 205., 60.]
         self.fans = {0: 1., 2: 1., 3: 1.}
@@ -398,6 +400,8 @@ class StopMacroMachine:
             self.saved_relative = self.relative
         elif command == "G91":
             self.relative = True
+        elif command == "G90":
+            self.relative = False
         elif command == "RESTORE_GCODE_STATE":
             self.relative = self.saved_relative
         elif command == "G1":
@@ -415,7 +419,8 @@ class StopMacroMachine:
         elif command == "C5_PRINT_END_TUNE":
             self.end_tune_restored = True
         elif command not in ("M400", "STEPPER_RESONANCE_DAMP_DISABLE",
-                             "SET_PAUSE_NEXT_LAYER", "SET_PAUSE_AT_LAYER"):
+                             "SET_PAUSE_NEXT_LAYER", "SET_PAUSE_AT_LAYER",
+                             "SET_SKEW"):
             raise AssertionError("Unmodelled command: %s" % name)
 
 
