@@ -16,6 +16,10 @@ export HELIX_DISPLAY_BACKEND=fbdev HELIX_FB_DEVICE=/dev/fb0
 # A HELIX_DISPLAY_ROTATION line in config/helixscreen.env wins.
 grep -q '^HELIX_DISPLAY_ROTATION=' "$HELIX_DIR/config/helixscreen.env" 2>/dev/null ||
     export HELIX_DISPLAY_ROTATION=90
+# The printer has no timezone: a POSIX TZ string in /usr/data/opencreator/timezone
+# (e.g. EST5EDT,M3.2.0,M11.1.0) sets the screen's clock, else it shows UTC.
+[ -n "${TZ:-}" ] || [ ! -s /usr/data/opencreator/timezone ] ||
+    export TZ="$(head -n 1 /usr/data/opencreator/timezone)"
 export HELIX_LOG_DEST=file HELIX_LOG_FILE=/tmp/helixscreen.log
 export HELIX_CACHE_DIR=$HELIX_DIR/cache
 export HOME=${HOME:-/root}
