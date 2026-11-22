@@ -62,6 +62,15 @@ normal toolchange. `M400`, synchronous motor commands, and post-move dock/grab
 switch verification remain. The slower contact speeds are separately
 configurable; zero waits do not make contact at clear-travel speed.
 
+When a head doesn't seat in its dock (dock switch open after `dock_seat_retries` + 1 approaches), X/Y may have
+lost steps. The head stays locked on, backs out to the pre-dock point, Z moves by `dock_rehome_z` (default 2,
+relative, so the bed moves 2 mm away from the nozzle), `G28 X Y` runs, and the dock is tried again with the same number of approaches. Only if that fails
+too are the heaters turned off and the print stopped. `dock_rehome: False` turns this off.
+
+On the way to a dock (to pick up or park), the head lines up on the dock's Y `dock_lane_lead` (default 15 mm)
+inboard of `approach_x` and then comes in along X only, so it doesn't take a fast diagonal that turns into the
+dock lane at `approach_x`. From outboard of that point it first backs out along X.
+
 ## First-time setup dialog
 
 After installing, Fluidd, Mainsail and the touchscreen show a short setup
