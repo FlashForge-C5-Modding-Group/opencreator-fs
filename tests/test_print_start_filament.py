@@ -291,7 +291,7 @@ class StopMacroMachine:
 
     def __init__(self, attached=None, selected="extruder", current_load=None,
                  homed="xyz", lower_bed=True, sensor_error=None,
-                 cached_tool=None, state="printing", z=245.):
+                 cached_tool=None, state="printing", z=245., park=None):
         self.attached = attached
         self.sensor_error = sensor_error
         self.cached_tool = cached_tool
@@ -306,6 +306,11 @@ class StopMacroMachine:
             # C5_SAVE_BABYSTEP is optional; model a firmware without it.
             "gcode": {"commands": {}},
         }
+        # park=None models a Kalico without the park_carriage_on_end switch.
+        if park is not None:
+            self.status["output_pin park_carriage_on_end"] = {
+                "value": float(park)}
+        self.parked_empty = None
         self.heaters = [220., 215., 210., 205., 60.]
         self.fans = {0: 1., 2: 1., 3: 1.}
         self.messages = []
@@ -409,6 +414,8 @@ class StopMacroMachine:
             position = self.status["toolhead"]["position"]
             position["z"] = position["z"] + z if self.relative else z
             self.z_moves.append(position["z"])
+        elif command == "C5_PARK_CARRIAGE":
+            self.parked_empty = self.attached is None and self.motors_enabled
         elif command == "C5_LOWER_BED":
             self.status["toolhead"]["position"]["z"] = 250.
             self.z_moves.append(250.)
@@ -517,6 +524,49 @@ class PrintStopTests(unittest.TestCase):
         self.assert_cleanup(machine)
         self.assertEqual(machine.z_moves, [250.])
         self.assertEqual(machine.docked, [1])
+
+    def test_park_carriage_on_end_parks_the_empty_carriage_before_motors_off(self):
+        machine = StopMacroMachine(attached=1, selected="extruder1", park=True)
+        machine.execute("C5_PRINT_STOP")
+        self.assert_cleanup(machine)
+        self.assertEqual(machine.docked, [1])
+        self.assertTrue(machine.parked_empty)
+        commands = [c.split()[0] for c in machine.commands]
+        self.assertLess(commands.index("AFC_UNSELECT_TOOL"),
+                        commands.index("C5_PARK_CARRIAGE"))
+        self.assertLess(commands.index("C5_PARK_CARRIAGE"), commands.index("M84"))
+
+    def test_park_off_or_missing_switch_never_parks(self):
+        for park in (False, None):
+            with self.subTest(park=park):
+                machine = StopMacroMachine(attached=0, park=park)
+                machine.execute("C5_PRINT_STOP")
+                self.assert_cleanup(machine)
+                self.assertEqual(machine.docked, [0])
+                self.assertIsNone(machine.parked_empty)
+
+    def test_park_needs_xyz_homed(self):
+        for homed in ("", "xy", "z"):
+            with self.subTest(homed=homed):
+                machine = StopMacroMachine(attached=2, homed=homed, park=True)
+                machine.execute("C5_PRINT_STOP")
+                self.assert_cleanup(machine)
+                self.assertIsNone(machine.parked_empty)
+
+    def test_failed_dock_never_parks(self):
+        machine = StopMacroMachine(
+            sensor_error="Conflicting dock/grab sensors; motion blocked",
+            park=True)
+        with self.assertRaisesRegex(ValueError, "Conflicting dock/grab"):
+            machine.execute("C5_PRINT_STOP")
+        self.assertIsNone(machine.parked_empty)
+
+    def test_cancel_mid_print_parks_but_idle_cancel_does_not(self):
+        for state, parked in (("printing", True), ("standby", None)):
+            with self.subTest(state=state):
+                machine = StopMacroMachine(attached=1, state=state, park=True)
+                machine.execute("CANCEL_PRINT")
+                self.assertEqual(machine.parked_empty, parked)
 
     def test_idle_cancel_does_not_run_stop_motion(self):
         machine = StopMacroMachine(attached=1, state="standby")
