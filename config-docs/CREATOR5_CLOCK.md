@@ -37,3 +37,17 @@ never got as far as `rdate` and the clock stayed at 1970 until the next boot.
 
 Klipper and Moonraker time their work with the monotonic clock, so the jump
 from 1970 (or from the saved time) to the real time doesn't affect a print.
+
+## Timezone
+
+The printer has no timezone setting, so it keeps UTC. For the touchscreen's
+clock, `startup/scripts/04-timezone.sh` looks up the local timezone from the
+printer's public IP once the network answers (`ipapi.co`, else `ip-api.com`;
+it retries every 20 s for up to 10 minutes). It turns the zone name into a TZ
+rule with `startup/timezones.txt` (built from the tz database) and saves it in
+`/usr/data/opencreator/timezone.auto`. If the timezone changed, it restarts
+HelixScreen, unless a print is running.
+
+To set it yourself, put a zone name (`America/Toronto`) or a TZ rule
+(`EST5EDT,M3.2.0,M11.1.0`) in `/usr/data/opencreator/timezone`. That file wins
+and turns the lookup off. HelixScreen reads the timezone each time it starts.

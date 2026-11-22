@@ -16,16 +16,26 @@ export HELIX_DISPLAY_BACKEND=fbdev HELIX_FB_DEVICE=/dev/fb0
 # A HELIX_DISPLAY_ROTATION line in config/helixscreen.env wins.
 grep -q '^HELIX_DISPLAY_ROTATION=' "$HELIX_DIR/config/helixscreen.env" 2>/dev/null ||
     export HELIX_DISPLAY_ROTATION=90
-# The printer has no timezone: a POSIX TZ string in /usr/data/opencreator/timezone
-# (e.g. EST5EDT,M3.2.0,M11.1.0) sets the screen's clock, else it shows UTC.
-[ -n "${TZ:-}" ] || [ ! -s /usr/data/opencreator/timezone ] ||
-    export TZ="$(head -n 1 /usr/data/opencreator/timezone)"
 export HELIX_LOG_DEST=file HELIX_LOG_FILE=/tmp/helixscreen.log
 export HELIX_CACHE_DIR=$HELIX_DIR/cache
 export HOME=${HOME:-/root}
 mkdir -p "$HELIX_CACHE_DIR"
 
+# The printer has no timezone: timezone (yours) or timezone.auto (04-timezone.sh)
+# holds a POSIX TZ string or a zone name; read at every start of the screen.
+OC=/usr/data/opencreator
+screen_tz() {
+    for f in "$OC/timezone" "$OC/timezone.auto"; do
+        [ -s "$f" ] || continue
+        v=$(head -n 1 "$f")
+        case $v in */*) v=$(awk -v z="$v" '$1 == z { print $2; exit }' "$OC/startup/timezones.txt") ;; esac
+        [ -n "$v" ] && { echo "$v"; return; }
+    done
+}
+
 while true; do
+    TZ=$(screen_tz)
+    if [ -n "$TZ" ]; then export TZ; else unset TZ; fi
     "$HELIX_DIR/bin/helix-launcher.sh" >> /tmp/helixscreen-launcher.log 2>&1
     sleep 3
 done
