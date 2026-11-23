@@ -40,6 +40,9 @@ fi
 # config-docs/CREATOR5_CPU_PRIORITY.md)
 NICE=
 nice -n -20 true 2>/dev/null && NICE="nice -n -20"
+# Pin Klippy to core 0 so the 600mm/s toolchange step generation is never
+# preempted by camera/UI/moonraker on the other core (X2600 has 2 cores).
+command -v taskset >/dev/null 2>&1 && NICE="$NICE taskset -c 0"
 
 PLUGINS=/usr/data/opencreator/plugin-manager/oc-plugin
 [ -d /opt/bin ] && [ -f "$PLUGINS" ] && ln -sf "$PLUGINS" /opt/bin/oc-plugin

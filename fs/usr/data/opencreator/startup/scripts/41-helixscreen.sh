@@ -21,7 +21,21 @@ export HELIX_CACHE_DIR=$HELIX_DIR/cache
 export HOME=${HOME:-/root}
 mkdir -p "$HELIX_CACHE_DIR"
 
+# The printer has no timezone: timezone (yours) or timezone.auto (04-timezone.sh)
+# holds a POSIX TZ string or a zone name; read at every start of the screen.
+OC=/usr/data/opencreator
+screen_tz() {
+    for f in "$OC/timezone" "$OC/timezone.auto"; do
+        [ -s "$f" ] || continue
+        v=$(head -n 1 "$f")
+        case $v in */*) v=$(awk -v z="$v" '$1 == z { print $2; exit }' "$OC/startup/timezones.txt") ;; esac
+        [ -n "$v" ] && { echo "$v"; return; }
+    done
+}
+
 while true; do
+    TZ=$(screen_tz)
+    if [ -n "$TZ" ]; then export TZ; else unset TZ; fi
     "$HELIX_DIR/bin/helix-launcher.sh" >> /tmp/helixscreen-launcher.log 2>&1
     sleep 3
 done
