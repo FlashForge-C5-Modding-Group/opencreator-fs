@@ -118,7 +118,7 @@
       "author": "pappicio",
       "description": "Advanced filesystem manager for FlashForge Creator 5, featuring file browsing, editing, an integrated SSH terminal, customizable interface settings, and read-only protection for critical system files.",
       "url": "https://github.com/pappicio/opencreator-commander.git",
-      "note": "Support is provided only when the printer is running in Tunneled Mode. The author accepts no responsibility for damage, data loss, or malfunctions resulting from improper use of this plugin. Use it at your own risk."
+      "note": "Support is provided only when the printer is running in Tunneled. The author accepts no responsibility for damage, data loss, or malfunctions resulting from improper use of this plugin. Use it at your own risk."
     }
   ]
 }
