@@ -101,6 +101,15 @@
       "description": "Provides HTTP API endpoints for Creator 5 mode switching and synchronization with a remote Linux host.",
       "url": "https://github.com/pappicio/api-server.git",
       "note": "Requires Script Runner on Creator 5 and Mode Monitor installed on the Raspberry Pi, Radxa ZERO 3W, or another compatible remote Linux host. Mode Monitor: https://github.com/pappicio/Raspberry-C5-klipper_mode_monitor. Both components are required for complete mode switching and data synchronization."
+    },
+    {
+      "id": "light-off-on-end",
+      "name": "Auto light",
+      "official": false,
+      "author": "ni4223",
+      "description": "Turns the chamber light on when a print starts and off when it finishes. A cancel or an error leaves it on.",
+      "url": "https://github.com/ni4223/opencreator-plugin-light-off.git",
+      "note": "On by default. Turn it off with the auto_light toggle in Fluidd."
     }
   ]
 }
