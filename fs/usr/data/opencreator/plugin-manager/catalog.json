@@ -110,6 +110,15 @@
       "description": "Turns the chamber light on when a print starts and off when it finishes. A cancel or an error leaves it on.",
       "url": "https://github.com/ni4223/opencreator-plugin-light-off.git",
       "note": "On by default. Turn it off with the auto_light toggle in Fluidd."
+    },
+    {
+      "id": "opencreator-commander",
+      "name": "OpenCreator Commander",
+      "official": false,
+      "author": "pappicio",
+      "description": "Advanced filesystem manager for FlashForge Creator 5, featuring file browsing, editing, an integrated SSH terminal, customizable interface settings, and read-only protection for critical system files.",
+      "url": "https://github.com/pappicio/opencreator-commander.git",
+      "note": "Support is provided only when the printer is running in Tunneled Mode. The author accepts no responsibility for damage, data loss, or malfunctions resulting from improper use of this plugin. Use it at your own risk."
     }
   ]
 }
