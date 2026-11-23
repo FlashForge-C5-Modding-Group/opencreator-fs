@@ -101,6 +101,15 @@
       "description": "Provides HTTP API endpoints for Creator 5 mode switching and synchronization with a remote Linux host.",
       "url": "https://github.com/pappicio/api-server.git",
       "note": "Requires Script Runner on Creator 5 and Mode Monitor installed on the Raspberry Pi, Radxa ZERO 3W, or another compatible remote Linux host. Mode Monitor: https://github.com/pappicio/Raspberry-C5-klipper_mode_monitor. Both components are required for complete mode switching and data synchronization."
+    },
+    {
+      "id": "opencreator-commander",
+      "name": "OpenCreator Commander",
+      "official": false,
+      "author": "pappicio",
+      "description": "Advanced filesystem manager for FlashForge Creator 5, featuring file browsing, editing, an integrated SSH terminal, customizable interface settings, and read-only protection for critical system files.",
+      "url": "https://github.com/pappicio/opencreator-commander.git",
+      "note": "Support is provided only when the printer is running in Tunneled Mode. The author accepts no responsibility for damage, data loss, or malfunctions resulting from improper use of this plugin. Use it at your own risk."
     }
   ]
 }
