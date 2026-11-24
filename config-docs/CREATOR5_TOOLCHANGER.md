@@ -55,12 +55,18 @@ Toolchange speeds are configured in `printer.creator5.cfg` in mm/s:
 `pickup_predock_speed`, `pickup_latch_speed`, `pullback_speed`, and
 `departure_speed`. `pickup_accel` is in mm/s². The 600 mm/s clear-travel
 setting applies only before entering the dock; close-range and departure
-moves retain independent lower limits. `release_latch_wait_ms` controls the
-post-`MOTOR_RELEASE` delay. This config sets it, `pickup_latch_wait_ms`, and
-`toolchange_sensor_settle_ms` to zero, so there are no fixed pauses during a
-normal toolchange. `M400`, synchronous motor commands, and post-move dock/grab
-switch verification remain. The slower contact speeds are separately
-configurable; zero waits do not make contact at clear-travel speed.
+moves retain independent lower limits. Only the last `dock_predock_offset` mm
+into a dock (6) and the run from `pre_dock_x` to the head (292, about 6.5 mm)
+are at contact speed. `release_latch_wait_ms` and `pickup_latch_wait_ms` are
+zero; `toolchange_sensor_settle_ms` (50) gives the dock and mount switches
+time to settle before each check. `M400`, synchronous motor commands, and
+post-move dock/grab switch verification remain.
+
+A change stops about six times to check switches, and the first move after
+each stop is scheduled `toolchange_start_delay` seconds ahead (0.1; the
+toolhead default is 0.25). The klippy log has one line per change with the
+time to each check, for example `Creator 5 toolchange T0->T1: 3.43s (dock
+seated +1.12, unlocked +0.48, ...)`.
 
 When a head doesn't seat in its dock (dock switch open after `dock_seat_retries` + 1 approaches), X/Y may have
 lost steps. The head stays locked on, backs out to the pre-dock point, Z moves by `dock_rehome_z` (default 2,
