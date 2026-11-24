@@ -433,7 +433,8 @@ and runtime G-code offsets. Partial Z results are not kept if XY probing fails.
 
 Fluidd's Fans & Outputs panel shows the virtual output pins **flow_calibration**,
 **purge**, **purge_line**, **bed_leveling**, **bed_soak**, **clog_detection**,
-**lower_bed_on_end**, **quiet_mode**, **startup_tune**, and
+**lower_bed_on_end**, **park_carriage_on_end**, **quiet_mode**,
+**startup_tune**, and
 **print_start_tune** controls as on/off switches (plus **chamber_heat_fan_full** on the Pro,
 which keeps the chamber heater fan at 90% (`fan_speed`) instead of slowing it near the chamber target). They do not drive physical
 MCU pins. Flow and purge start on by default
@@ -457,7 +458,11 @@ but no longer clutter the macro buttons. `printer.misc.cfg` still provides
 states. Fans & Outputs also shows **lower_bed_on_end**, which defaults off. Toggle it
 with `SET_PIN PIN=lower_bed_on_end VALUE=1` (or `VALUE=0`).
 Its startup default and travel speed are `lower_bed_on_end_default` and
-`lower_bed_speed` in `printer.creator5.cfg`. These Misc choices, bed leveling,
+`lower_bed_speed` in `printer.creator5.cfg`. **park_carriage_on_end** (default off,
+`C5_MISC_PARK_CARRIAGE_ON_END_ON`/`_OFF`) runs `C5_PARK_CARRIAGE` after the print-end dock: the
+empty carriage moves inboard of the docks, then to `park_x`/`park_y` (back left,
+X5 Y250 by default). It is skipped unless X, Y and Z are homed, and never runs
+when docking fails. These Misc choices, bed leveling,
 and the startup and print-start tune switches are saved across Klippy restarts
 in `/usr/data/opencreator/klipper/config/c5_misc_variables.cfg`. Bed leveling defaults on until
 changed. The slicer can
