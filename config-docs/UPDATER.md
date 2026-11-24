@@ -121,7 +121,9 @@ when they differ.
   successful flash (`.opencreator-updater/mcu-flashed.json` in the config folder). With
   `VERSION`, a board already reporting it is only recorded, so a printer that is already
   current isn't flashed again.
-- Only the out-of-date boards are flashed, never during a print.
+- Only the out-of-date boards are flashed, and only after Moonraker confirms an idle print state. If its status is
+  unavailable, malformed or unknown, Kalico and MCU updates are deferred and tried again later; they never assume
+  that an unreachable Moonraker means the printer is idle.
 - It doesn't wait for the configs: a config conflict doesn't hold the firmware (or Kalico)
   back, since Klipper breaks when they fall out of step, not over a config.
 - A live flash is tried once. A failed set of files is noted in

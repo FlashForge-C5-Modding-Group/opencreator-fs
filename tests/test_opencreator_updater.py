@@ -422,6 +422,44 @@ class McuSyncTest(unittest.TestCase):
         self.s.sync_mcu()
         self.assertEqual(self.flashed_sets(), ["eBoard.hex "])
 
+    def test_unavailable_status_defers_then_retries(self):
+        self.hexes(**{"eBoard.hex": b"e1"})
+        self.set_flasher()
+        real_api = self.s.api
+        def unavailable(path, method="GET", body=None, timeout=10):
+            if "print_stats" in path:
+                raise TimeoutError("Moonraker unavailable")
+            return real_api(path, method, body, timeout)
+        self.s.api = unavailable
+        self.s.sync_mcu()
+        self.assertEqual(self.flashed_sets(), [])
+        self.assertIn("deferring updates", (self.tmp / "log").read_text())
+        self.s.api = real_api
+        self.s.sync_mcu()
+        self.assertEqual(self.flashed_sets(), ["eBoard.hex "])
+
+    def test_malformed_status_defers_then_retries(self):
+        self.hexes(**{"eBoard.hex": b"e1"})
+        self.set_flasher()
+        real_api = self.s.api
+        def malformed(path, method="GET", body=None, timeout=10):
+            if "print_stats" in path:
+                return {"result": {"status": {}}}
+            return real_api(path, method, body, timeout)
+        self.s.api = malformed
+        self.s.sync_mcu()
+        self.assertEqual(self.flashed_sets(), [])
+        self.s.api = real_api
+        self.s.sync_mcu()
+        self.assertEqual(self.flashed_sets(), ["eBoard.hex "])
+
+    def test_unknown_state_defers(self):
+        self.hexes(**{"eBoard.hex": b"e1"})
+        self.set_flasher()
+        self.state = "restarting"
+        self.s.sync_mcu()
+        self.assertEqual(self.flashed_sets(), [])
+
 
 @unittest.skipUnless(shutil.which("git"), "needs git")
 class KalicoSyncTest(unittest.TestCase):

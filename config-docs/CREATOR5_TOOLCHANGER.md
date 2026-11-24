@@ -67,9 +67,8 @@ lost steps. The head stays locked on, backs out to the pre-dock point, Z moves b
 relative, so the bed moves 2 mm away from the nozzle), `G28 X Y` runs, and the dock is tried again with the same number of approaches. Only if that fails
 too are the heaters turned off and the print stopped. `dock_rehome: False` turns this off.
 
-On the way to a dock (to pick up or park), the head lines up on the dock's Y `dock_lane_lead` (default 15 mm)
-inboard of `approach_x` and then comes in along X only, so it doesn't take a fast diagonal that turns into the
-dock lane at `approach_x`. From outboard of that point it first backs out along X.
+On the way to a dock (to pick up or park), the head moves to the dock's Y at `approach_x` in one diagonal move.
+From outboard of `approach_x` it first backs out along X, then moves along Y.
 
 ## First-time setup dialog
 

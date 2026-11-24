@@ -5,16 +5,16 @@
 # See config-docs/CREATOR5_LIVE_MCU_FLASH.md.
 
 DIR=${1:-}
-LOG=/usr/data/logs/oc-mcu-flash.log
-MR=http://127.0.0.1:7125
-WORK=/tmp/oc-mcu-flash
+LOG=${OC_MCU_LOG:-/usr/data/logs/oc-mcu-flash.log}
+MR=${OC_MOONRAKER:-http://127.0.0.1:7125}
+WORK=${OC_MCU_WORK:-/tmp/oc-mcu-flash}
 
 die() { echo "oc-mcu-flash: $*" >&2; exit 1; }
 say() { echo "$*"; echo "$(date '+%F %T') $*" >> "$LOG"; }
 
 [ -n "$DIR" ] && [ -d "$DIR" ] || die "usage: oc-mcu-flash DIR"
 DIR=$(cd "$DIR" && pwd)
-CONTROL=$(ls -d /usr/prog/PROGRAM/control/[0-9]* 2>/dev/null | sort | tail -n 1)
+CONTROL=${OC_MCU_CONTROL:-$(ls -d /usr/prog/PROGRAM/control/[0-9]* 2>/dev/null | sort | tail -n 1)}
 IAP=$CONTROL/IAPCommand
 ISP=$CONTROL/ISPCommand
 [ -x "$IAP" ] && [ -x "$ISP" ] || die "no IAPCommand/ISPCommand in $CONTROL"
@@ -31,6 +31,8 @@ state=$(curl -s -m 5 "$MR/printer/objects/query?print_stats=state" |
         sed -n 's/.*"state": *"\([a-z]*\)".*/\1/p')
 case "$state" in
     printing|paused) die "printer is $state" ;;
+    standby|complete|cancelled|error) ;;
+    *) die "cannot confirm printer is idle; not flashing" ;;
 esac
 
 pids_of() {

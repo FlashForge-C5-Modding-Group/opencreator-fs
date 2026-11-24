@@ -192,11 +192,18 @@ class Updater:
             return json.load(r)
 
     def printing(self) -> bool:
+        """True unless Moonraker confirms an idle print state.
+
+        A status failure must never authorize a Kalico or MCU update: Klippy may
+        still be printing while Moonraker is unavailable.
+        """
         try:
             st = self.api("/printer/objects/query?print_stats=state", timeout=5)
-            return st["result"]["status"]["print_stats"]["state"] in ("printing", "paused")
-        except Exception:
-            return False
+            state = st["result"]["status"]["print_stats"]["state"]
+            return state not in ("standby", "complete", "cancelled", "error")
+        except Exception as exc:
+            self.log("printer status unavailable (%s); deferring updates" % exc)
+            return True
 
     # ---- config merge ---------------------------------------------------------
     def templates(self, template_dir: Path):
