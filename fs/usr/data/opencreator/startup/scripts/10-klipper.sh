@@ -46,6 +46,7 @@ command -v taskset >/dev/null 2>&1 && NICE="$NICE taskset -c 0"
 
 PLUGINS=/usr/data/opencreator/plugin-manager/oc-plugin
 [ -d /opt/bin ] && [ -f "$PLUGINS" ] && ln -sf "$PLUGINS" /opt/bin/oc-plugin
+[ -d /opt/bin ] && ln -sf /usr/data/opencreator/startup/commands/oc-switchscreen /opt/bin/oc-switchscreen
 
 while true; do
     if [ -x "$KPY" ]; then

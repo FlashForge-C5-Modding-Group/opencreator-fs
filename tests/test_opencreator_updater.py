@@ -271,6 +271,19 @@ class OverlayTest(unittest.TestCase):
         s.sync_loopscript()
         self.assertEqual((s.grumpyscreen / "languages" / "de.json").read_text(), '{"name": "Deutsch"}')
 
+    def test_switchscreen_command_executable(self):
+        # /opt/bin/oc-switchscreen links to it, so it must run by name
+        s = up.SocUpdater(config_dir=self.tmp / "config", clone=self.tmp / "clone", ocdir=self.tmp / "oc",
+                          log_path=self.tmp / "log")
+        s.nginx, s.firmware_exe = self.tmp / "nginx", self.tmp / "firmwareExe"
+        s.api = lambda *a, **k: None
+        src = self.tmp / "clone" / "fs" / "usr" / "data" / "opencreator" / "startup" / "commands"
+        src.mkdir(parents=True)
+        (src / "oc-switchscreen").write_text("#!/bin/sh\n")
+        os.chmod(str(src / "oc-switchscreen"), 0o644)
+        s.sync_loopscript()
+        self.assertTrue(os.access(str(self.tmp / "oc" / "startup" / "commands" / "oc-switchscreen"), os.X_OK))
+
 
 @unittest.skipUnless(shutil.which("sh"), "needs sh")
 class RestartTest(unittest.TestCase):

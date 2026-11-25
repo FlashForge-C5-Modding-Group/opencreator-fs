@@ -512,6 +512,7 @@ class SocUpdater(Updater):
                 self._chmod(new / "startup.sh", 0o755)
                 for s in (new / "scripts").glob("*.sh"):
                     self._chmod(s, 0o755)
+                self._chmod(new / "commands" / "oc-switchscreen", 0o755)
             elif part == "firmware":
                 self._chmod(new / "firmwareExe", 0o755)
             elif part == "plugin-manager":
