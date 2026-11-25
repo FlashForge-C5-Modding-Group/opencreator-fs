@@ -185,13 +185,15 @@ class RunoutWaitTests(unittest.TestCase):
         self.assertIn("Load|_OC_RUNOUT_LOAD_CONTINUE|primary", output)
         self.assertNotIn("C5_TOOL_PURGE", output)
 
-    def test_load_purges_at_the_load_speed_then_resumes(self):
+    def test_load_resumes_with_a_purge_at_the_load_speed(self):
         output = render_runout("_OC_RUNOUT_LOAD_CONTINUE", 1, {
             "filament_switch_sensor extruder1_tool_start": {
                 "filament_detected": True},
         })
-        self.assertIn("C5_TOOL_PURGE LENGTH=120 SPEED=8", output)
-        self.assertLess(output.index("C5_TOOL_PURGE"), output.index("RESUME"))
+        # RESUME does the purge and the prime; purging here too would purge twice
+        self.assertIn("RESUME PURGE_LENGTH=120 PURGE_SPEED=8", output)
+        self.assertNotIn("C5_TOOL_PURGE", output)
+        self.assertNotIn("G1 E5", output)
 
 
 class RunoutFilamentTests(unittest.TestCase):
@@ -230,8 +232,8 @@ class RunoutFilamentTests(unittest.TestCase):
                         output)
                     self.assertIn(
                         "TEMPERATURE_WAIT SENSOR=extruder MINIMUM=218", output)
-                    self.assertIn("C5_TOOL_PURGE LENGTH=120 SPEED=8", output)
-                    self.assertIn("RESUME", output)
+                    self.assertIn("RESUME PURGE_LENGTH=120 PURGE_SPEED=8",
+                                  output)
                     self.assertNotIn("HEATER=extruder0", output)
                     self.assertNotIn("SENSOR=extruder0", output)
                 else:

@@ -539,10 +539,40 @@ The eboard check needs the extruder drivers in StealthChop
 (`stealthchop_threshold: 999999` on each `[tmc2209 extruder*]`); in
 SpreadCycle `SG_RESULT` stays near zero and no candidate ever passes.
 
-`PAUSE` saves the current print position and raises Z by up to 5 mm without
-moving XY toward the docked heads. `RESUME` delegates to Klipper's saved-state
-restore with the return move capped at 10 mm/s; AFC's wrapper remains in place
-when PREP has installed it. At the
+`PAUSE` and `RESUME` (`mainsail.cfg`) never raise the bed above the paused
+height. Before any travel, `PAUSE` lowers the bed `variable_z_clearance` (2 mm)
+below the paused height, counting AFC's 0.4 mm `z_hop` that runs first. The
+bed stays there until `RESUME` goes back to the print, and AFC's last 0.4 mm
+brings it to the paused height.
+`PAUSE` saves the attached tool, the four nozzle targets and the part fan
+speed. It retracts 2 mm, cools the nozzles to 40 C, turns the part fan off, and
+parks at the purge spot through X/Y `prep_approach`. It pauses in place
+instead when no tool is attached, the tool sensors disagree, the toolchanger is
+busy, or the head is beside the docks. `PAUSE REASON=runout` (AFC runout) leaves
+the move and the heaters to `C5_FILAMENT_RUNOUT`. `PAUSE REASON=motion` (motion
+guard) cools but doesn't park.
+`RESUME` refuses if Z lost its position or a different tool is attached. After a
+motion pause, or if X/Y were lost, it homes X and Y with `G28 X Y`. That lowers
+the bed to Z10 first when it is higher, and the move back to the print raises it
+to the paused height again. It reheats at the purge spot and purges 20 mm
+(`variable_purge_length`, or `PURGE_LENGTH=`) at the height it is at. It then runs
+the part fan at full for 3 s, leaves through X/Y `prep_approach`
+(`C5_LEAVE_PURGE_BUCKET`), primes the purge's 5 mm retract, and restores the fan
+and the idle timeout. Last, it moves back to the print at `clear_travel_speed`
+(or `VELOCITY=`).
+Print by object (Orca's `print_sequence = by object`, read from every print
+file): finished objects can be taller than the one being printed. `PAUSE`
+lowers the bed so the nozzle is `variable_z_clearance` (2 mm) above the highest
+Z the file has printed so far instead, if that is lower, then travels. `RESUME` crosses back to
+the paused X/Y at that height, and only then brings the bed up to the paused
+height. A by-layer print, or a file started part way through, keeps the normal
+behavior.
+While a print is paused, `C5_TOOL_PURGE` and `C5_MOVE_TO_PURGE_BUCKET` skip
+their Z lift and `purge_z`. They and `C5_LEAVE_PURGE_BUCKET` travel at
+`clear_travel_speed`, like tool changes, instead of the slower idle purge path.
+The short hop from X/Y `prep_approach` into the purge spot stays at 50 mm/s.
+`C5_TOOL_PURGE` and `C5_MOVE_TO_PURGE_BUCKET` don't move X/Y when the head is
+already at the purge spot (a parked pause, or heating there before a purge). At the
 cooldown wiper (X266.5/Y13.8), the nozzle descends to Z2, the eboard
 `fanM106` toolhead fan runs during cooldown, and the nozzle rises to Z10
 before docking. Verify wiper XY and Z clearances on the physical machine.
