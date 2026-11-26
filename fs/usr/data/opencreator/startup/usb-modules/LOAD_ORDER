@@ -1,3 +1,7 @@
+usbserial.ko
+usb-serial-simple.ko
+ch341.ko
+cdc-acm.ko
 mii.ko
 r8152.ko
 usbnet.ko

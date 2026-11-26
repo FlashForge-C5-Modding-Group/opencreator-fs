@@ -2,4 +2,4 @@
 mcu-firmware/*.hex -text
 
 # Kernel modules: loaded as built, SHA256SUMS covers the exact bytes
-fs/usr/data/opencreator/startup/usb-ethernet/*.ko binary
+fs/usr/data/opencreator/startup/usb-modules/*.ko binary
