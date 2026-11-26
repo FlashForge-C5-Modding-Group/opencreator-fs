@@ -33,6 +33,12 @@ screen_tz() {
     done
 }
 
+# Custom kernels can show boot messages on the screen (framebuffer console):
+# hand the screen to the UI, or the console's text and cursor draw over it
+for v in /sys/class/vtconsole/vtcon*; do
+    grep -q "frame buffer" "$v/name" 2>/dev/null && echo 0 > "$v/bind"
+done
+
 while true; do
     TZ=$(screen_tz)
     if [ -n "$TZ" ]; then export TZ; else unset TZ; fi
