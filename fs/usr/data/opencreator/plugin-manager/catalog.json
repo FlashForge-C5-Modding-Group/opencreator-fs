@@ -128,6 +128,15 @@
       "description": "Telegram notification plugin for FlashForge Creator 5, featuring print status notifications, webcam snapshots, printer startup alerts, Klipper and Moonraker monitoring, multiple Telegram chats and topics, and a web-based configuration interface.",
       "url": "https://github.com/pappicio/telegram_notify.git",
       "note": "Telegram notifications and printer monitoring are active only when the printer is running in SOC mode and the service is enabled. The web interface remains accessible in both SOC and Tunneled modes. Use it at your own risk."
-    }
+    },
+    {
+      "id": "opencreator_notifier",
+      "name": "OpenCreator Notifier",
+      "official": false,
+      "author": "pappicio",
+      "description": "Multi-provider notification plugin for FlashForge Creator 5, powered by the Apprise notification engine. Supports Discord, Email (SMTP), Google Chat, Gotify, Matrix, Mattermost, Microsoft Teams, ntfy, Pushover, Slack, and Telegram. Features configurable notification services, Klipper macro monitoring, custom macros, and a web-based configuration interface.",
+      "url": "https://github.com/pappicio/opencreator_notifier.git",
+      "note": "Notifications and printer monitoring are active only when the printer is running in SOC mode and the service is enabled. The web interface remains accessible in both SOC and Tunneled modes. Use it at your own risk."
+}
   ]
 }
