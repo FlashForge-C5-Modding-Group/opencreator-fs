@@ -1,6 +1,6 @@
 # Creator 5 early boot: `firmware/driver.sh`
 
-Stock's read-only rootfs runs `/etc/init.d/S11module_driver_default` at every boot. It runs `/usr/prog/module/driver.sh` if that file exists. FlashForge never ships one, and their updates only overwrite the files in their own `module.tar`, so the file survives updates. S11 runs after `/usr/prog` is mounted (S09) and long before `app_startup.sh` (S99), which FlashForge updates do overwrite.
+Stock's rootfs runs `/etc/init.d/S11module_driver_default` at every boot. It runs `/usr/prog/module/driver.sh` if that file exists. FlashForge never ships one, and their updates only overwrite the files in their own `module.tar`, so the file survives updates. S11 runs after `/usr/prog` is mounted (S09) and long before `app_startup.sh` (S99), which FlashForge updates do overwrite. The rootfs is read-only while the printer runs, but an update can ship a new one (squashfs); the stock one calls `driver.sh`, and a new one dropping that is unlikely. Without the call, `app_startup.sh` boots OpenCreator the old way.
 
 The updater installs `firmware/driver.sh` there whenever it differs. It takes effect at the next boot.
 
