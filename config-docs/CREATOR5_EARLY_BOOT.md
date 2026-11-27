@@ -30,4 +30,26 @@ Log: `/tmp/early.log`.
 
 ## Wi-Fi
 
-After starting Wi-Fi, `firmwareExe` waits until `wlan0` has an address, at most 30 s, then starts OpenCreator (`/tmp/opencreator.log`: `FE: Wi-Fi address after N s`, or `no Wi-Fi address after 30 s, starting anyway`). It doesn't wait when no network is saved.
+After starting Wi-Fi, `firmwareExe` waits until `wlan0` has an address, at most 15 s, then starts OpenCreator (`/tmp/opencreator.log`: `FE: Wi-Fi address after N s`, or `no Wi-Fi address after 15 s, starting anyway`). It doesn't wait when no network is saved.
+
+## Recovery stick
+
+`runRecovery.sh` in the root of a USB stick runs at every boot while the stick is in, before OpenCreator starts:
+
+- as root, with `sh`, from the stick's folder; `RECOVERY_DIR` is the stick;
+- even if `/usr/data` didn't mount;
+- output is appended to `runRecovery.log` on the stick and goes to `/tmp/early.log`;
+- the stick is mounted at `/tmp/recovery-usb` (not `/mnt`, which stock's USB update uses), read-only until a `runRecovery.sh` is found, then read-write;
+- the first of `/dev/sda1`..`sda4`, then `/dev/sda`, that has one is used; it waits up to 3 s for a stick to appear.
+
+OpenCreator boots afterwards as usual. A FlashForge update on the same stick still stops the early start.
+
+## Files on the printer
+
+| File | Installed by |
+|---|---|
+| `/usr/prog/module/driver.sh` | installer (activation step), then the updater from `firmware/driver.sh` (only where `/usr/prog/module` exists); the installer's rollbacks remove it |
+| `/usr/prog/PROGRAM/software/firmwareExe` | installer and updater, from `firmware/firmwareExe` (never over FlashForge's ELF) |
+| `/usr/data/opencreator/firmware/{driver.sh,firmwareExe}` | updater, the copies it installs from |
+
+User docs: [Early boot and recovery stick](https://github.com/FlashForge-C5-Modding-Group/OpenCreator/blob/main/docs/early-boot.md).

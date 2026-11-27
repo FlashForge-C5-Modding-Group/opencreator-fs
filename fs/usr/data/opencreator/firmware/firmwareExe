@@ -63,17 +63,17 @@ pidof wpa_supplicant >/dev/null 2>&1 || wifi_index=
     done
 ) &
 
-# Start OpenCreator once wlan0 has an address, or after 30 s without one.
+# Start OpenCreator once wlan0 has an address, or after 15 s without one.
 if grep -q 'network=' "$WPA_CONF" 2>/dev/null; then
     n=0
-    while [ $n -lt 60 ] && ! ip -4 addr show wlan0 2>/dev/null | grep -q 'inet '; do
+    while [ $n -lt 30 ] && ! ip -4 addr show wlan0 2>/dev/null | grep -q 'inet '; do
         sleep 0.5
         n=$((n + 1))
     done
     if ip -4 addr show wlan0 2>/dev/null | grep -q 'inet '; then
         log_launcher "FE: Wi-Fi address after $((n / 2)) s"
     else
-        log_launcher "FE: no Wi-Fi address after 30 s, starting anyway"
+        log_launcher "FE: no Wi-Fi address after 15 s, starting anyway"
     fi
 fi
 
