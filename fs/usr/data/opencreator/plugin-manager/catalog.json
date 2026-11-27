@@ -121,15 +121,6 @@
       "note": "Support is provided only when the printer is running in Tunneled. The author accepts no responsibility for damage, data loss, or malfunctions resulting from improper use of this plugin. Use it at your own risk."
     },
     {
-      "id": "telegram_notify",
-      "name": "Telegram Notify",
-      "official": false,
-      "author": "pappicio",
-      "description": "Telegram notification plugin for FlashForge Creator 5, featuring print status notifications, webcam snapshots, printer startup alerts, Klipper and Moonraker monitoring, multiple Telegram chats and topics, and a web-based configuration interface.",
-      "url": "https://github.com/pappicio/telegram_notify.git",
-      "note": "Telegram notifications and printer monitoring are active only when the printer is running in SOC mode and the service is enabled. The web interface remains accessible in both SOC and Tunneled modes. Use it at your own risk."
-    },
-    {
       "id": "opencreator_notifier",
       "name": "OpenCreator Notifier",
       "official": false,
