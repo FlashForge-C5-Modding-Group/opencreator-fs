@@ -19,6 +19,12 @@ if [ -d "$CONFIG_DIR" ]; then
     [ -f "$CONFIG" ] && export CONFIG_FILE="$CONFIG"
 fi
 
+# Custom kernels can show boot messages on the screen (framebuffer console):
+# hand the screen to the UI, or the console's text and cursor draw over it
+for v in /sys/class/vtconsole/vtcon*; do
+    grep -q "frame buffer" "$v/name" 2>/dev/null && echo 0 > "$v/bind"
+done
+
 while true; do
     "$GRUMPY" >> /tmp/grumpyscreen.log 2>&1
     sleep 3

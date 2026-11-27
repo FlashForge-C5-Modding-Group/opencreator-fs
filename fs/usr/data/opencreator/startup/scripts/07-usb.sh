@@ -1,29 +1,41 @@
 #!/bin/sh
-# USB Ethernet adapters: the printer has Wi-Fi only and no USB network
-# drivers. Loads the modules in ../usb-ethernet, gives any adapter that
-# appears an address by DHCP, and prefers it over Wi-Fi while it's connected.
-# See config-docs/CREATOR5_USB_ETHERNET.md.
-DIR=/usr/data/opencreator/startup/usb-ethernet
-LOG=/usr/data/logs/usb-ethernet.log
+# USB serial and USB Ethernet. On FlashForge's kernels, loads the modules in
+# ../usb-modules; on every kernel, gives any USB Ethernet adapter an address by
+# DHCP and prefers it over Wi-Fi while it's connected. Runs on tunneled printers
+# too (tunneled.sh). See config-docs/CREATOR5_USB_ETHERNET.md.
+#
+# Serial: loaded on kernel packages 2.0.0-2.0.6 and 2.0.8; 2.0.7 builds
+# usb-serial in. Ethernet: no FlashForge kernel has it, so it's loaded on all
+# of them. Custom kernels (OpenCreator's c5-kernel) build both in and load no
+# modules.
+DIR=/usr/data/opencreator/startup/usb-modules
+LOG=/usr/data/logs/usb.log
 say() { echo "$(date '+%F %T') $*" >> "$LOG"; }
 
-# Only the kernels these modules were built and checked for
 kernel=$(ls /usr/prog/PROGRAM/kernel/ 2>/dev/null | head -n 1)
-case "$(uname -r) $kernel" in
-    "5.10.186+ 2.0.7"|"5.10.186+ 2.0.8") ;;
-    *) say "kernel $(uname -r) (package ${kernel:-unknown}) not supported; not loading"; exit 0 ;;
-esac
-cd "$DIR" || exit 0
-if ! sha256sum -c -s SHA256SUMS; then
+if [ -e /proc/config.gz ]; then
+    # FlashForge's kernels have no IKCONFIG; c5-kernel has /proc/config.gz
+    say "custom kernel $(uname -r): drivers built in, no modules loaded"
+elif ! (cd "$DIR" && sha256sum -c -s SHA256SUMS); then
     say "module files don't match SHA256SUMS; not loading"
-    exit 0
+else
+    case "$kernel" in
+        2.0.[0-6]|2.0.8) serial=1 ;;
+        *) serial= ;;
+    esac
+    for m in $(cat "$DIR/LOAD_ORDER"); do
+        name=$(basename "$m" .ko)
+        case "$name" in
+            usbserial|usb-serial-simple|ch341|cdc-acm) [ -n "$serial" ] || continue ;;
+        esac
+        # lsmod lists cdc-acm.ko as cdc_acm
+        grep -q "^$(echo "$name" | tr - _) " /proc/modules && continue
+        # insmod refuses modules built for another kernel; that's logged here
+        insmod "$DIR/$m" 2>>"$LOG" || say "insmod $m failed"
+    done
+    if [ -n "$serial" ]; then serial="loaded"; else serial="skipped"; fi
+    say "kernel $(uname -r) (package ${kernel:-unknown}): modules loaded, serial $serial"
 fi
-for m in $(cat LOAD_ORDER); do
-    name=$(basename "$m" .ko)
-    grep -q "^$name " /proc/modules && continue
-    insmod "./$m" 2>>"$LOG" || { say "insmod $m failed"; exit 0; }
-done
-say "modules loaded"
 
 # A cable pulled out leaves the adapter's routes in place: ignore them, so
 # traffic falls back to Wi-Fi at once.

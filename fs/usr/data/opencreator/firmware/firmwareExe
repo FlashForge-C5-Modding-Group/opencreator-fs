@@ -14,17 +14,25 @@ log_launcher() {
 }
 log_launcher "firmwareExe is starting..."
 
+# The early boot hook (/usr/prog/module/driver.sh) may have started OpenCreator
+# already: then only stay alive, app_startup.sh restores stock without a
+# running firmwareExe.
+if ! mkdir /tmp/opencreator.boot 2>/dev/null; then
+    log_launcher "FE: already started, staying alive"
+    while true; do sleep 3600; done
+fi
+
 log_launcher "FE: Enabling legacy NaN and mounting Entware..."
 sh /usr/data/opencreator/startup/scripts/01-fixnan.sh
 if [ ! -x /opt/bin/opkg ] && [ -d /usr/data/bin/opt ] && ! grep -q ' /opt ' /proc/mounts; then
     mount --bind /usr/data/bin/opt /opt
 fi
 
-log_launcher "FE: Starting SoC coprocessor..."
+#log_launcher "FE: Starting SoC coprocessor..."
 # Mirrors stock klipper/start.sh.
-cmd_mcu write_firmware /usr/prog/libmcu-bare.bin
-cmd_mcu bootup
-sleep 2
+#cmd_mcu write_firmware /usr/prog/libmcu-bare.bin
+#cmd_mcu bootup
+#sleep 2
 
 log_launcher "FE: Joining Wi-Fi Network..."
 # Stock firmwareExe joins the Wi-Fi networks saved from the touchscreen;
@@ -55,9 +63,19 @@ pidof wpa_supplicant >/dev/null 2>&1 || wifi_index=
     done
 ) &
 
-# Give the Wi-Fi association above a moment to actually happen instead of
-# moving on immediately.
-sleep 10
+# Start OpenCreator once wlan0 has an address, or after 15 s without one.
+if grep -q 'network=' "$WPA_CONF" 2>/dev/null; then
+    n=0
+    while [ $n -lt 30 ] && ! ip -4 addr show wlan0 2>/dev/null | grep -q 'inet '; do
+        sleep 0.5
+        n=$((n + 1))
+    done
+    if ip -4 addr show wlan0 2>/dev/null | grep -q 'inet '; then
+        log_launcher "FE: Wi-Fi address after $((n / 2)) s"
+    else
+        log_launcher "FE: no Wi-Fi address after 15 s, starting anyway"
+    fi
+fi
 
 # Check for tunneled.sh override after Wi-Fi setup
 TUNNELED_SCRIPT="/usr/data/opencreator/tunneled/tunneled.sh"

@@ -1,0 +1,101 @@
+#!/bin/sh
+# oc-switchscreen: switch the touchscreen between GrumpyScreen and HelixScreen.
+#   oc-switchscreen            show which screen is on and running
+#   oc-switchscreen grumpy     turn GrumpyScreen on, HelixScreen off
+#   oc-switchscreen helix      turn HelixScreen on, GrumpyScreen off
+# One screen at a time, as the installer sets it up: 40-grumpyscreen.sh and
+# 41-helixscreen.sh only start an executable binary, so the other one stays on
+# the printer, not executable. See config-docs/CREATOR5_SCREENS.md.
+
+# The process patterns below are expanded unquoted: no globbing against files.
+set -f
+OC_ROOT=${OC_ROOT:-}
+SCRIPTS=$OC_ROOT/usr/data/opencreator/startup/scripts
+GRUMPY=$OC_ROOT/usr/data/grumpyscreen/grumpyscreen
+HELIX=$OC_ROOT/usr/data/helixscreen/bin/helix-screen
+INSTALL_STATE=$OC_ROOT/usr/data/opencreator/install.json
+
+GRUMPY_PROCS="*40-grumpyscreen.sh* */grumpyscreen/grumpyscreen*"
+HELIX_PROCS="*41-helixscreen.sh* */helixscreen/bin/helix-launcher.sh* */helixscreen/bin/helix-watchdog* */helixscreen/bin/helix-screen* */helixscreen/bin/helix-splash*"
+
+die() { echo "oc-switchscreen: $*" >&2; exit 1; }
+
+state() {  # state BINARY: on, off or missing
+    if [ ! -f "$1" ]; then echo missing
+    elif [ -x "$1" ]; then echo on
+    else echo off
+    fi
+}
+
+# PIDs whose command line matches one of the patterns. ps cuts names short,
+# so read /proc.
+pids_matching() {
+    set +f
+    for d in /proc/[0-9]*; do
+        cmd=$({ tr '\0' ' ' < "$d/cmdline"; } 2>/dev/null) || continue
+        for pattern in "$@"; do
+            case "$cmd" in
+                $pattern) echo "${d#/proc/}"; break ;;
+            esac
+        done
+    done
+    set -f
+}
+
+running() {  # running PATTERN...: yes or no
+    [ -n "$(pids_matching "$@")" ] && echo yes || echo no
+}
+
+stop() {  # stop PATTERN...: the startup loop goes too, so it can't start the screen again
+    pids=$(pids_matching "$@")
+    [ -n "$pids" ] || return 0
+    kill $pids 2>/dev/null
+    sleep 2
+    pids=$(pids_matching "$@")
+    [ -z "$pids" ] || kill -9 $pids 2>/dev/null
+}
+
+status() {
+    echo "GrumpyScreen: $(state "$GRUMPY"), running: $(running $GRUMPY_PROCS)"
+    echo "HelixScreen:  $(state "$HELIX"), running: $(running $HELIX_PROCS)"
+}
+
+# Not during a print: HelixScreen needs about 60 MB more memory than GrumpyScreen.
+printing() {
+    command -v curl > /dev/null || return 1
+    case "$(curl -s -m 5 'http://127.0.0.1:7125/printer/objects/query?print_stats=state' 2>/dev/null)" in
+        *'"printing"'* | *'"paused"'*) return 0 ;;
+    esac
+    return 1
+}
+
+switch() {  # switch NAME BINARY START_SCRIPT OTHER_BINARY RECORD
+    name=$1 on=$2 script=$3 off=$4 record=$5
+    [ -f "$on" ] || die "$name isn't installed. Install it with the OpenCreator Installer (touchscreen setting)."
+    [ -n "$OC_ROOT" ] || [ "$(id -u)" -eq 0 ] || die "run it as root"
+    ! printing || die "a print is running; switch after it ends"
+    [ ! -f "$off" ] || chmod 644 "$off"
+    chmod 755 "$on"
+    stop $GRUMPY_PROCS $HELIX_PROCS
+    # The installer records the choice; a later install or update keeps it
+    if [ -f "$INSTALL_STATE" ]; then
+        sed -i "s/\"touchscreen\": *\"[^\"]*\"/\"touchscreen\": \"$record\"/" "$INSTALL_STATE"
+    fi
+    if [ -z "$OC_ROOT" ]; then
+        if command -v setsid > /dev/null; then
+            (setsid sh "$script" > /dev/null 2>&1 < /dev/null &)
+        else
+            (nohup sh "$script" > /dev/null 2>&1 < /dev/null &)
+        fi
+    fi
+    echo "$name is on; it stays the touchscreen after a reboot."
+}
+
+case "${1:-}" in
+    "" | status) status ;;
+    grumpy | grumpyscreen)
+        switch GrumpyScreen "$GRUMPY" "$SCRIPTS/40-grumpyscreen.sh" "$HELIX" yes ;;
+    helix | helixscreen)
+        switch HelixScreen "$HELIX" "$SCRIPTS/41-helixscreen.sh" "$GRUMPY" helix ;;
+    *) echo "usage: oc-switchscreen [grumpy | helix]" >&2; exit 2 ;;
+esac

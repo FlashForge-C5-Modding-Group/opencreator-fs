@@ -57,14 +57,60 @@ if [ -f "$SITE" ] && ! grep -q 'location /webcam' "$SITE"; then
     ' "$SITE" > "$SITE.tmp" && mv "$SITE.tmp" "$SITE"
 fi
 
+# Cameras in moonraker.conf (the default one) stream straight from the printer's
+# IP, not through the /webcam/ redirect above: Fluidd's adaptive mode fetches
+# every frame as a snapshot, each one a redirect through nginx. URLs on the
+# /webcamN/ path or on this printer's previous IP get its current one; other
+# cameras are left alone. Redone before each Moonraker start, so a new IP is
+# picked up by the next one. With no IP yet, the redirect still works.
+CAMERA_IP=/usr/data/opencreator/.camera-ip
+printer_ip() {
+    ip=$(ip route get 1.1.1.1 2>/dev/null | sed -n 's/.* src \([0-9.]*\).*/\1/p' | head -n 1)
+    [ -n "$ip" ] || ip=$(ip -4 addr show scope global 2>/dev/null | sed -n 's/.*inet \([0-9.]*\).*/\1/p' | head -n 1)
+    echo "$ip"
+}
+point_cameras() {
+    conf=$OC/config/moonraker.conf
+    grep -q '^\[webcam' "$conf" 2>/dev/null || return 0
+    ip=$(printer_ip)
+    [ -n "$ip" ] || return 0
+    old=$(cat "$CAMERA_IP" 2>/dev/null)
+    awk -v ip="$ip" -v old="$old" '
+        /^\[/ { cam = ($0 ~ /^\[webcam[] ]/) }
+        cam && /^[[:space:]]*(stream_url|snapshot_url)[[:space:]]*[:=]/ {
+            i = match($0, /[:=][[:space:]]*/)
+            key = substr($0, 1, i + RLENGTH - 1)
+            url = substr($0, i + RLENGTH)
+            if (url ~ /^\/webcam[2-4]?\//) {
+                n = substr(url, 8, 1)
+                port = (n ~ /[2-4]/) ? 8079 + n : 8080
+                sub(/^\/webcam[2-4]?\//, "", url)
+                $0 = key "http://" ip ":" port "/" url
+            } else if (old != "" && old != ip && url ~ ("^http://" old ":808[0-3]/")) {
+                sub("^http://" old ":", "http://" ip ":", url)
+                $0 = key url
+            }
+        }
+        { print }
+    ' "$conf" > "$conf.tmp" && { cmp -s "$conf" "$conf.tmp" || cat "$conf.tmp" > "$conf"; } && rm -f "$conf.tmp"
+    echo "$ip" > "$CAMERA_IP"
+}
+
 log_launcher "Launching WebUI..."
 /usr/prog/nginx/sbin/nginx -p /usr/prog/nginx -c /usr/prog/nginx/conf/nginx.conf
+
+# Wi-Fi is joined before the startup scripts; its address can take a moment
+if grep -q '^\[webcam' "$OC/config/moonraker.conf" 2>/dev/null; then
+    i=0
+    while [ -z "$(printer_ip)" ] && [ "$i" -lt 20 ]; do sleep 1; i=$((i + 1)); done
+fi
 
 while true; do
     if [ -x "$MPY" ]; then
         [ -f /usr/data/opencreator/plugin-manager/oc-plugin ] &&
             sh /usr/data/opencreator/plugin-manager/oc-plugin sync --only moonraker >> "$LAUNCHER_LOG" 2>&1
         [ -f "$REPO" ] && sh "$REPO" exclude >> "$LAUNCHER_LOG" 2>&1
+        point_cameras
         log_launcher "Launching Moonraker..."
         rm -rf "$OC/tmp"/*
         TMPDIR="$OC/tmp" "$MPY" "$MOONRAKER/moonraker/moonraker.py" -d "$OC"
