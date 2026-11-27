@@ -42,6 +42,8 @@ GRUMPYSCREEN_DIR = Path("/usr/data/grumpyscreen")
 # The login banner and prompt (startup/scripts/03-login.sh links it at boot)
 PROFILE_LINK = Path("/etc/profile.d/opencreator.sh")
 FIRMWARE_EXE = Path("/usr/prog/PROGRAM/software/firmwareExe")
+# Stock's read-only S11 runs it at every boot, see config-docs/CREATOR5_EARLY_BOOT.md
+EARLY_HOOK = Path("/usr/prog/module/driver.sh")
 STOCK_STARTUP = (Path("/usr/prog/app_startup.sh"), Path("/usr/prog/PROGRAM/runFirmwareExe.sh"))
 SOC_LOG = Path("/tmp/opencreator-updater.log")
 
@@ -447,6 +449,7 @@ class SocUpdater(Updater):
         self.grumpyscreen = GRUMPYSCREEN_DIR
         self.profile_link = PROFILE_LINK
         self.firmware_exe = FIRMWARE_EXE
+        self.early_hook = EARLY_HOOK
         self.control = STOCK_CONTROL
         self.klipper = SOC_KLIPPER
 
@@ -515,6 +518,7 @@ class SocUpdater(Updater):
                 self._chmod(new / "commands" / "oc-switchscreen", 0o755)
             elif part == "firmware":
                 self._chmod(new / "firmwareExe", 0o755)
+                self._chmod(new / "driver.sh", 0o755)
             elif part == "plugin-manager":
                 self._chmod(new / "oc-plugin", 0o755)
             elif part == "mcu-flash":
@@ -567,6 +571,16 @@ class SocUpdater(Updater):
                 changed = True
         except OSError as e:
             self.log("firmwareExe: update failed: %s" % e)
+        # Only where FlashForge's module folder exists, i.e. on the printer.
+        hook = self.ocdir / "firmware" / "driver.sh"
+        try:
+            current = self.early_hook.read_bytes() if self.early_hook.is_file() else b""
+            if hook.is_file() and self.early_hook.parent.is_dir() and current != hook.read_bytes():
+                write_atomic(self.early_hook, hook.read_bytes(), 0o755)
+                self.log("driver.sh: updated")
+                changed = True
+        except OSError as e:
+            self.log("driver.sh: update failed: %s" % e)
         os.sync()
         if changed:
             try:

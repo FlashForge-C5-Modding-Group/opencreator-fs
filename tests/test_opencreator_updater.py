@@ -255,6 +255,23 @@ class OverlayTest(unittest.TestCase):
         s.sync_loopscript()
         self.assertEqual(s.firmware_exe.read_bytes(), b"#!/bin/sh\nnew\n")
 
+    def test_early_hook_installed_only_where_module_folder_exists(self):
+        s = up.SocUpdater(config_dir=self.tmp / "config", clone=self.tmp / "clone", ocdir=self.tmp / "oc",
+                          log_path=self.tmp / "log")
+        s.nginx, s.firmware_exe = self.tmp / "nginx", self.tmp / "firmwareExe"
+        s.early_hook = self.tmp / "module" / "driver.sh"
+        s.api = lambda *a, **k: None
+        hook = self.tmp / "oc" / "firmware" / "driver.sh"
+        hook.parent.mkdir(parents=True)
+        hook.write_bytes(b"#!/bin/sh\nhook\n")
+        (self.tmp / "clone" / "fs" / "usr" / "data").mkdir(parents=True)
+        s.sync_loopscript()
+        self.assertFalse(s.early_hook.parent.exists())      # not a printer: nothing created
+        s.early_hook.parent.mkdir()
+        s.sync_loopscript()
+        self.assertEqual(s.early_hook.read_bytes(), b"#!/bin/sh\nhook\n")
+        self.assertTrue(os.access(str(s.early_hook), os.X_OK))
+
     def test_grumpyscreen_languages(self):
         s = up.SocUpdater(config_dir=self.tmp / "config", clone=self.tmp / "clone", ocdir=self.tmp / "oc",
                           log_path=self.tmp / "log")
