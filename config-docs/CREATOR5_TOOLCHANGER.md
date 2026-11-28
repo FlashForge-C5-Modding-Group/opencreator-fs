@@ -575,7 +575,9 @@ fallback. After successful docking/no-op, the macro optionally lowers the bed
 to the physical Z maximum before disabling motors. The optional move only runs
 when Z is homed and uses machine coordinates, independent of nozzle Z offsets.
 AFC's `custom_tool_swap` and `custom_unselect` entries route
-physical changes into the Klippy safety coordinator. AFC's
+physical changes into the Klippy safety coordinator. `custom_tool_swap` goes
+through `_OC_TOOL_SWAP`, which adds the notower bucket purge, see
+[CREATOR5_NOTOWER.md](CREATOR5_NOTOWER.md). AFC's
 `enable_standalone_purge` is disabled to avoid a second purge. The stock
 filament presence pins belong to AFC; the filament motion encoders remain
 in `printer.filament.cfg`.
