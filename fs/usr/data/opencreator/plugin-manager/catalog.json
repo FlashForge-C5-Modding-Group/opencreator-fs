@@ -119,6 +119,15 @@
       "description": "Advanced filesystem manager for FlashForge Creator 5, featuring file browsing, editing, an integrated SSH terminal, customizable interface settings, and read-only protection for critical system files.",
       "url": "https://github.com/pappicio/opencreator-commander.git",
       "note": "Support is provided only when the printer is running in Tunneled. The author accepts no responsibility for damage, data loss, or malfunctions resulting from improper use of this plugin. Use it at your own risk."
-    }
+    },
+    {
+      "id": "opencreator_notifier",
+      "name": "OpenCreator Notifier",
+      "official": false,
+      "author": "pappicio",
+      "description": "Multi-provider notification plugin for FlashForge Creator 5, powered by the Apprise notification engine. Supports Discord, Email (SMTP), Google Chat, Gotify, Matrix, Mattermost, Microsoft Teams, ntfy, Pushover, Slack, and Telegram. Features configurable notification services, Klipper macro monitoring, custom macros, and a web-based configuration interface.",
+      "url": "https://github.com/pappicio/opencreator_notifier.git",
+      "note": "Notifications and printer monitoring are active only when the printer is running in SOC mode and the service is enabled. The web interface remains accessible in both SOC and Tunneled modes. Use it at your own risk."
+}
   ]
 }
