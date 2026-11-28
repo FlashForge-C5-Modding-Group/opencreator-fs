@@ -344,6 +344,62 @@ the measured length is outside 70–130 % of the requested length (slipping,
 a wrong mark, or a wrong `wheel_mm_per_pulse`). Each logical extruder keeps
 its own `rotation_distance`, so tools can differ.
 
+## Per-tool temperature offset calibration
+
+A nozzle gets longer as it heats, so it sits lower at print temperature than
+when its offsets were measured cold. Stock corrects this with one number for
+the whole printer: `(hotend - 120) * tempOffset` from `test.json`, added to
+the nozzle Z offset. `C5_TEMP_OFFSET_CALIBRATION` (or
+`C5_CALIBRATE_TEMP_OFFSETS`, or **Temp Offsets** in GrumpyScreen's macros)
+measures each tool's own growth instead.
+
+For each tool it:
+
+1. Heats the bed (`BED`), picks up the tool and moves to the purge bucket.
+2. Heats the nozzle to AFC's temperature for the tool's material (Spoolman,
+   else `default_material_temps`; 220 °C when AFC has none) and pulls the
+   filament back `RETRACT` mm at 10 mm³/s.
+3. Asks you to pull the filament the rest of the way out and clean the
+   nozzle tip, then waits for **Continue**.
+4. Waits for the bed, cools the nozzle to 50 °C or below over the bucket
+   with the part fan, and touches the levelboard (3 touches, averaged).
+5. Heats to the PLA, PETG and ABS/ASA temperatures in turn, waits 60 s at
+   each, and touches the levelboard again.
+6. Cools, docks, and saves how far the nozzle grew at each temperature.
+
+The build plate must be off (it asks), as for offset calibration. Without
+`TOOL` it asks which tool; `TOOL=ALL` does all four, one after another. If
+**Continue** isn't pressed within 15 minutes, the heaters turn off and the
+tool stays attached. Afterwards, put the plate back and reload filament.
+
+| Parameter | Default | |
+|---|---|---|
+| `TOOL` | prompt | 0–3 or `ALL` |
+| `PLA` | 215 | first measuring temperature, °C |
+| `PETG` | 245 | second |
+| `ABS` | 275 | third (ABS/ASA) |
+| `BED` | 60 | bed temperature during the measurement |
+| `RETRACT` | 200 | mm of filament pulled back before cleaning |
+
+The defaults come from `temp_offset_temps`, `temp_offset_bed` and
+`temp_offset_retract` in `[creator5_toolchanger]`; `temp_offset_soak`,
+`temp_offset_reference_temp`, `temp_offset_retract_flow`,
+`temp_offset_samples` and `temp_offset_timeout` set the rest. The results go
+to `temp_offset.json` beside `extruder.json` (`temp_offset_json_path`).
+
+**How prints use it.** A tool with all three temperatures measured gets its
+thermal correction from straight lines between its points: cold (0), PLA,
+PETG and ABS/ASA. Below the PLA point and above the ABS/ASA point the
+nearest line continues. This replaces only the `tempOffset` term; the bed
+and first-layer corrections and the touchscreen Z adjustment still apply. A
+tool that hasn't been calibrated, or has fewer than three points, keeps the
+stock formula. `printer.creator5_toolchanger.temp_offset_tools` shows which
+tools are calibrated.
+
+Every touch is made with the filament out, so nothing can ooze onto the
+levelboard; a reading that varies by more than 0.05 mm between touches stops
+the calibration.
+
 ## Toolchange counter
 
 Every completed pickup adds one to `toolchanges.txt` in the config directory
@@ -496,7 +552,9 @@ or reset offset. The stock firmware uses `SET_GCODE_OFFSET ... MOVE=1`; the
 Creator 5 port now does the same. The stock example `extruder.json` yields
 about 2.86 mm for T0 before print compensation, but actual printer calibration
 values are authoritative. As in factory `BuildPage::startPrint`, the offset
-also includes `(hotend - 120) * tempOffset` from `test.json`, -0.08 mm for a
+also includes `(hotend - 120) * tempOffset` from `test.json` (or, for a tool
+calibrated with `C5_TEMP_OFFSET_CALIBRATION`, its measured temperature
+offsets; see above), -0.08 mm for a
 bed target of at least 100 C, -0.06 mm for a first layer below 0.11 mm, and
 the selected tool's saved touchscreen adjustment. Orca's
 `; first_layer_height = ...` header is passed through automatically when

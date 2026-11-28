@@ -76,7 +76,8 @@ class MenusTest(unittest.TestCase):
             self.assertIn(menu, known, menu)
 
     def test_tool_menus_offer_homing(self):
-        for name, axes in (("LOAD_MENU", "z"), ("CAL_DOCK_MENU", "z"), ("TOOL_OFFSETS_MENU", "xy")):
+        for name, axes in (("LOAD_MENU", "z"), ("CAL_DOCK_MENU", "z"), ("TOOL_OFFSETS_MENU", "xy"),
+                           ("TEMP_OFFSETS_MENU", "xy")):
             lines = run(name, printer(homed=axes))
             self.assertEqual(len(lines), 1, name)
             self.assertTrue(lines[0].startswith("_MENU_NEED_HOME MENU=%s" % name), lines)
@@ -84,6 +85,7 @@ class MenusTest(unittest.TestCase):
         for name in ("LOAD_MENU", "CAL_DOCK_MENU"):
             self.assertIn('RESPOND TYPE=command MSG="action:prompt_show"', run(name, printer()))
         self.assertEqual(run("TOOL_OFFSETS_MENU", printer()), ["C5_CALIBRATE_OFFSETS"])
+        self.assertEqual(run("TEMP_OFFSETS_MENU", printer()), ["C5_CALIBRATE_TEMP_OFFSETS"])
 
     def test_home_prompt_reopens_the_menu(self):
         prompt = run("_MENU_NEED_HOME", printer(), MENU="LOAD_MENU", TEMP="250")
@@ -99,10 +101,10 @@ class MenusTest(unittest.TestCase):
 
     def test_calibration_menus_refuse_while_printing(self):
         for name in ("SHAPER_MENU", "SHAPER_GRAPH_MENU", "VFA_MENU", "VFA_GRAPH_MENU", "LEVEL_SAVE_MENU",
-                     "TOOL_OFFSETS_MENU"):
+                     "TOOL_OFFSETS_MENU", "TEMP_OFFSETS_MENU"):
             with self.assertRaises(Raised):
                 run(name, printer(state="printing"))
-            if name != "TOOL_OFFSETS_MENU":
+            if name not in ("TOOL_OFFSETS_MENU", "TEMP_OFFSETS_MENU"):
                 self.assertIn('RESPOND TYPE=command MSG="action:prompt_show"', run(name, printer()), name)
 
 
