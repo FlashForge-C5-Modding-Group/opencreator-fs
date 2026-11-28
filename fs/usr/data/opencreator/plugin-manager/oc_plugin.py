@@ -688,7 +688,8 @@ def market_summaries(p):
     for e in sorted(_local_catalog(p), key=lambda e: (not e["official"], e.get("name", e["id"]).lower())):
         name = e.get("name", e["id"])
         problems = compat_problems(p, e["requires"], warn=False)
-        lines = ["Official plugin" if e["official"] else "Unofficial: not made or checked by OpenCreator"]
+        lines = ["Official plugin" if e["official"] else
+                 "Unofficial: not made or checked by OpenCreator. Unofficial plugins can be dangerous and can prevent printing"]
         if e.get("author"):
             lines.append("By %s" % e["author"])
         if e.get("description"):
@@ -1025,7 +1026,8 @@ def cmd_install(p, a):
         if problems and not a.force:
             raise PluginError("not installed: %s (--force installs it anyway)" % "; ".join(problems))
         if not entry["official"]:
-            print("note: %s is unofficial: not made or checked by OpenCreator" % entry["id"])
+            print("note: %s is unofficial: not made or checked by OpenCreator. Unofficial plugins can be dangerous "
+                  "and can prevent printing" % entry["id"])
     os.makedirs(p.plugins, exist_ok=True)
     work = tempfile.mkdtemp(dir=p.plugins, prefix=".install-")
     try:
@@ -1273,7 +1275,8 @@ def cmd_search(p, a):
     if not found:
         print("Nothing in the catalog matches %r" % a.term if term else "The plugin catalog is empty")
     w = max([20] + [len(e["id"]) + 1 for e in found])
-    for official, heading in ((True, "Official"), (False, "Unofficial (not made or checked by OpenCreator)")):
+    for official, heading in ((True, "Official"), (False, "Unofficial (not made or checked by OpenCreator; unofficial "
+                                                           "plugins can be dangerous and can prevent printing)")):
         group = [e for e in found if e["official"] == official]
         if not group:
             continue
