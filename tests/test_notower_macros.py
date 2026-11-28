@@ -80,6 +80,7 @@ class NotowerPurgeTests(unittest.TestCase):
             "gcode_macro _OC_NOTOWER": notower_state(**state),
             "configfile": {"settings": {"extruder1": {"filament_diameter": 1.75}}},
             "extruder1": {"target": target},
+            "fan_generic fanM106": {"speed": 0.4},
         }
         return render(START_CONFIG, "gcode_macro _OC_NOTOWER_PURGE", printer,
                       {"T": "1"})
@@ -100,7 +101,11 @@ class NotowerPurgeTests(unittest.TestCase):
         self.assertTrue(all(move <= 100.0 for move in moves))
         self.assertTrue(all(line.endswith(" F249") for line in out
                             if line.startswith("G1 E") and "E-" not in line))
-        self.assertEqual(out[-3:], ["G1 E-1.0 F1200", "M400",
+        # The part fan at full for cool_time, then back to the print's speed
+        self.assertEqual(out[-6:], ["G1 E-1.0 F1200", "M400",
+                                    "SET_FAN_SPEED FAN=fanM106 SPEED=1",
+                                    "G4 P3000",
+                                    "SET_FAN_SPEED FAN=fanM106 SPEED=0.4",
                                     "RESTORE_GCODE_STATE NAME=OC_NOTOWER"])
 
     def test_slicer_density_and_hotter_target_win(self):

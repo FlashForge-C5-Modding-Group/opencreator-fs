@@ -38,9 +38,11 @@ milliseconds of competing load (camera streaming, screen capture) was enough.
   (new installs) gets a `/webcam/` redirect to port 8080 added inside its
   first `server` block. Tunnel installs are not affected.
 - **Camera URLs (`20-msmr.sh`)**: the cameras in `moonraker.conf`, such as the
-  default one, skip that redirect and use the printer's IP directly. Fluidd's
-  adaptive mode fetches every frame as a snapshot, so each frame was a redirect
-  through nginx. Before each Moonraker start, `stream_url`/`snapshot_url` lines
+  default one, skip that redirect and use the printer's IP directly. The
+  default camera uses UV4L-MJPEG, which shows the stream over one long
+  request; a camera switched to Fluidd's adaptive mode fetches every frame as
+  a snapshot, which would be a redirect through nginx for each frame. Before
+  each Moonraker start, `stream_url`/`snapshot_url` lines
   in `[webcam …]` sections that use `/webcamN/` become
   `http://<printer IP>:<port>/…` (`/webcam/` 8080, `/webcam2/` 8081, up to
   8083). URLs on the printer's previous IP (kept in

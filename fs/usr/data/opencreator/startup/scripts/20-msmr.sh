@@ -58,8 +58,9 @@ if [ -f "$SITE" ] && ! grep -q 'location /webcam' "$SITE"; then
 fi
 
 # Cameras in moonraker.conf (the default one) stream straight from the printer's
-# IP, not through the /webcam/ redirect above: Fluidd's adaptive mode fetches
-# every frame as a snapshot, each one a redirect through nginx. URLs on the
+# IP, not through the /webcam/ redirect above: the stream is one long request,
+# and a webcam switched to an adaptive mode fetches every frame as a snapshot,
+# each one a redirect through nginx. URLs on the
 # /webcamN/ path or on this printer's previous IP get its current one; other
 # cameras are left alone. Redone before each Moonraker start, so a new IP is
 # picked up by the next one. With no IP yet, the redirect still works.

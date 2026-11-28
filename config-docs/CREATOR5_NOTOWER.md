@@ -44,7 +44,9 @@ line (`; poop=2`, the `;` is optional) and it uses more than one tool.
      lands there;
    - purges `grams / density / filament area` mm, in moves of at most 100 mm
      (`max_extrude_only_distance` is 500), at `flow` mm³/s;
-   - retracts `retract` mm, against oozing on the way back.
+   - retracts `retract` mm, against oozing on the way back;
+   - runs the part cooling fan at full for `cool_time` seconds, so the purge
+     sets in the bucket, then puts the fan back to the print's speed.
 
    AFC then moves back to the print.
 4. `C5_PRINT_STOP` (the end of the print, and a cancel) clears notower.
@@ -63,6 +65,7 @@ In `[gcode_macro _OC_NOTOWER]` in `printer.creator5.cfg`:
 | `variable_travel_accel` | 20000 | trip to the bucket, mm/s² (`ACCEL`) |
 | `variable_flow` | 10.0 | purge flow, mm³/s |
 | `variable_retract` | 1.0 | retract after the purge, mm |
+| `variable_cool_time` | 3.0 | part fan at full after the purge, s |
 | `variable_default_density` | 1.24 | g/cm³ when the slicer gives no density (PLA) |
 
 `_OC_NOTOWER` on its own prints whether notower is armed and how much it purges.
