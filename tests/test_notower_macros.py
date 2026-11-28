@@ -101,11 +101,13 @@ class NotowerPurgeTests(unittest.TestCase):
         self.assertTrue(all(move <= 100.0 for move in moves))
         self.assertTrue(all(line.endswith(" F249") for line in out
                             if line.startswith("G1 E") and "E-" not in line))
-        # The part fan at full for cool_time, then back to the print's speed
-        self.assertEqual(out[-6:], ["G1 E-1.0 F1200", "M400",
+        # The part fan at full for cool_time, back to the print's speed, then
+        # straight out of the bucket
+        self.assertEqual(out[-7:], ["G1 E-1.0 F1200", "M400",
                                     "SET_FAN_SPEED FAN=fanM106 SPEED=1",
                                     "G4 P3000",
                                     "SET_FAN_SPEED FAN=fanM106 SPEED=0.4",
+                                    "C5_LEAVE_PURGE_BUCKET",
                                     "RESTORE_GCODE_STATE NAME=OC_NOTOWER"])
 
     def test_slicer_density_and_hotter_target_win(self):

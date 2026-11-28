@@ -10,9 +10,9 @@ trail back onto the print.
 ## Turning it on
 
 There is no switch. A print uses notower when its G-code has a `poop=<grams>`
-line (`; poop=2`, the `;` is optional) and it uses more than one tool.
+line (`; poop=0.05`, the `;` is optional) and it uses more than one tool.
 
-- `poop=` without a number is 2 g; `poop=0` turns it off.
+- `poop=` without a number is 0.05 g; `poop=0` turns it off.
 - Kalico's print dispatcher (`creator5_start_command` in `virtual_sdcard.py`)
   turns the line into `POOP=<grams>` on the `C5_PRINT_START` it builds. It also
   adds `DENSITY<n>` for each used tool, from Orca's `filament_density`.
@@ -72,5 +72,8 @@ In `[gcode_macro _OC_NOTOWER]` in `printer.creator5.cfg`:
 
 ## Time
 
-2 g of PLA is about 670 mm of 1.75 mm filament. At 10 mm³/s that's about
-2 min 40 s of purging per tool change, plus heating and the trip to the bucket.
+0.05 g of PLA (the default) is about 17 mm of 1.75 mm filament. At 10 mm³/s
+that's about 4 s of purging per tool change, plus heating and the trip to the
+bucket. After the purge the head moves 5 mm straight out of the bucket along X
+(`purge_exit_x` in `[creator5_toolchanger]`) before AFC takes it back to the
+print, so it doesn't clip a docked toolhead.

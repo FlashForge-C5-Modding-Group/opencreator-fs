@@ -173,7 +173,8 @@ class CalibrateTests(unittest.TestCase):
             self.assertEqual(len(calibrate), 4)
             for i in calibrate:
                 self.assertEqual(out[i - 1], "C5_MOVE_TO_PURGE_BUCKET")
-                self.assertEqual(out[i + 2], "G1 X250.0 Y250.0 F6000")
+                self.assertEqual(out[i + 1:i + 4], ["C5_LEAVE_PURGE_BUCKET", "G90",
+                                                    "G1 X250.0 Y250.0 F6000"])
 
 
 class PrintStartMaterialTests(unittest.TestCase):
