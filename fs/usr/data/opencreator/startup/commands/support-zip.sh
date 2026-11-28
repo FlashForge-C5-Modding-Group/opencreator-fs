@@ -21,7 +21,7 @@ done
 {
     date
     uname -a
-    cat /usr/data/opencreator/version.txt /usr/data/opencreator/install.json
+    cat /usr/data/opencreator/install.json
     git -C "$OC/klipper" log -1 --oneline
     git -C /usr/data/opencreator/opencreator-fs log -1 --oneline
     df -h /usr/data /tmp

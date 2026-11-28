@@ -82,7 +82,7 @@ The first run after install only notes the checkout's commit
   After new startup files go in, `startup/moonraker-repo.sh live` puts right a
   Moonraker checkout Moonraker calls invalid straight away (see
   [MOONRAKER_REPO.md](MOONRAKER_REPO.md)).
-- `version.txt` and the nginx snippets in `/usr/data/nginx/conf.d` are updated.
+- The nginx snippets in `/usr/data/nginx/conf.d` are updated.
 - GrumpyScreen's translations (`fs/usr/data/grumpyscreen/languages/*.json`) are copied
   beside its binary in `/usr/data/grumpyscreen/languages`, only where GrumpyScreen is
   installed. Languages you added yourself are kept. GrumpyScreen picks up changes the next

@@ -540,10 +540,6 @@ class SocUpdater(Updater):
             if part == "startup":
                 self.repair_moonraker_repo()
                 self.install_login()
-        version = src_root / "opencreator" / "version.txt"
-        if version.is_file() and (not (self.ocdir / "version.txt").is_file()
-                                  or (self.ocdir / "version.txt").read_bytes() != version.read_bytes()):
-            shutil.copy2(str(version), str(self.ocdir / "version.txt"))
         # GrumpyScreen reads its translations from beside its binary; only where
         # it is installed. It picks them up the next time it starts.
         if (self.grumpyscreen / "grumpyscreen").is_file():
